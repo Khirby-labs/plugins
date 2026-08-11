@@ -9,12 +9,12 @@
     "./web": "./src/web/index.ts"
   },
   "dependencies": {
-    "@khirby/plugin-sdk": "^1.0.0",
-    "@khirby/plugin-host": "^1.0.0"
+    "@khirby/plugin-sdk": "workspace:*",
+    "@khirby/plugin-host": "workspace:*"
   },
   "peerDependencies": {
-    "@khirby/plugin-sdk": "^1.0.0",
-    "@khirby/plugin-host": "^1.0.0",
+    "@khirby/plugin-sdk": "workspace:*",
+    "@khirby/plugin-host": "workspace:*",
     "@nestjs/common": "*",
     "@nestjs/swagger": "*",
     "class-validator": "*",

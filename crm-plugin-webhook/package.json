@@ -9,9 +9,9 @@
   ],
   "types": "src/index.ts",
   "peerDependencies": {
-    "@khirby/plugin-sdk": "^1.0.0"
+    "@khirby/plugin-sdk": "workspace:*"
   },
   "dependencies": {
-    "@khirby/plugin-sdk": "^1.0.0"
+    "@khirby/plugin-sdk": "workspace:*"
   }
 }
