@@ -8,7 +8,8 @@
     "khirby-plugin"
   ],
   "peerDependencies": {
-    "@khirby/plugin-sdk": "workspace:*",
+    "@khirby/plugin-host": "^1.0.0",
+    "@khirby/plugin-sdk": "^1.0.0",
     "@modelcontextprotocol/node": "*",
     "@modelcontextprotocol/server": "*",
     "@nestjs/common": "*",
@@ -16,13 +17,10 @@
     "@nestjs/swagger": "*",
     "bcryptjs": "*",
     "drizzle-orm": "*",
-    "zod": "*",
-    "@khirby/plugin-host": "workspace:*"
+    "zod": "*"
   },
   "types": "src/index.ts",
   "dependencies": {
-    "@khirby/plugin-sdk": "workspace:*",
-    "@khirby/plugin-host": "workspace:*",
     "hono": "4.13.1"
   }
 }

@@ -7,13 +7,9 @@
   "keywords": [
     "khirby-plugin"
   ],
-  "dependencies": {
-    "@khirby/plugin-sdk": "workspace:*",
-    "@khirby/plugin-host": "workspace:*"
-  },
   "peerDependencies": {
-    "@khirby/plugin-sdk": "workspace:*",
-    "@khirby/plugin-host": "workspace:*",
+    "@khirby/plugin-host": "^1.0.0",
+    "@khirby/plugin-sdk": "^1.0.0",
     "@nestjs/common": "*",
     "@nestjs/swagger": "*",
     "drizzle-orm": "*"

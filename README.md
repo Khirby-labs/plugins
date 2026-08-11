@@ -1,6 +1,6 @@
 # Khirby plugins
 
-First-party Khirby CRM plugins. Consumed by the [Khirby CRM](https://github.com/Khirby-labs) monorepo as a **local checkout** under `plugins/` (gitignored there) or as published `@khirby/plugin-*` packages.
+First-party Khirby CRM plugins. Consumed by the CRM monorepo as a **local checkout** under `plugins/` (gitignored there) or, later, as published `@khirby/plugin-*` packages.
 
 ## Packages
 
@@ -13,29 +13,31 @@ First-party Khirby CRM plugins. Consumed by the [Khirby CRM](https://github.com/
 | `crm-plugin-ai-compose` | `@khirby/plugin-ai-compose` |
 | `crm-plugin-pokelo` | `@khirby/plugin-pokelo` |
 
-Peers: `@khirby/plugin-sdk`, `@khirby/plugin-host` (published from the CRM monorepo).
+## Peer dependencies
+
+Plugins peer on published host packages from npm:
+
+- `@khirby/plugin-sdk` `^1.0.0`
+- `@khirby/plugin-host` `^1.0.0` (Nest plugins only)
+
+When checked out into the CRM monorepo, pnpm links these to the workspace packages that satisfy the range.
 
 ## Use with the CRM monorepo
 
 ```bash
 # from the CRM repo root
-git clone git@github.com:Khirby-labs/plugins.git plugins
+./scripts/checkout-plugins.sh
+# or: git clone git@github.com:Khirby-labs/plugins.git plugins
 pnpm install
+pnpm sync:plugins
 ```
 
 CI clones this repository into `plugins/` before `pnpm install` / Docker build.
 
 ## Authoring
 
-See the CRM repo `docs/PLUGINS.md` and `@khirby/plugin-sdk` / `@khirby/plugin-host`.
+See the CRM repo `docs/PLUGINS.md` and `@khirby/plugin-sdk` / `@khirby/plugin-host` on npm.
 
 ## License
 
 [MIT](./LICENSE) © Khirby Labs
-
-## Development
-
-These packages are meant to be checked out into the CRM monorepo's `plugins/`
-directory (`workspace:*` peers resolve to `packages/plugin-sdk` / `plugin-host`
-there). Standalone `pnpm install` in this repo alone is not supported until the
-host packages are published to npm.
