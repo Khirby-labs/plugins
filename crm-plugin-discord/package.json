@@ -3,12 +3,18 @@
   "version": "1.0.0",
   "description": "Discord incoming-webhook notifications for Khirby events",
   "main": "src/index.ts",
-  "private": true,
   "keywords": [
     "khirby-plugin"
   ],
   "types": "src/index.ts",
   "peerDependencies": {
     "@khirby/plugin-sdk": "^1.0.0"
+  },
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

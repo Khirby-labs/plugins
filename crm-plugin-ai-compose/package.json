@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Khirby — AI-powered reply draft suggestions (BYOK, OpenAI-compatible)",
   "main": "src/index.ts",
-  "private": true,
   "keywords": [
     "khirby-plugin"
   ],
@@ -14,5 +13,12 @@
     "@nestjs/swagger": "*",
     "drizzle-orm": "*"
   },
-  "types": "src/index.ts"
+  "types": "src/index.ts",
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
 }

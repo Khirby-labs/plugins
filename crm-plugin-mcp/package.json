@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Khirby — MCP server for external AI agents (read-only contacts & leads)",
   "main": "src/index.ts",
-  "private": true,
   "keywords": [
     "khirby-plugin"
   ],
@@ -22,5 +21,12 @@
   "types": "src/index.ts",
   "dependencies": {
     "hono": "4.13.1"
+  },
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }
