@@ -1,0 +1,28 @@
+{
+  "name": "@khirby/plugin-mcp",
+  "version": "1.0.0",
+  "description": "Khirby — MCP server for external AI agents (read-only contacts & leads)",
+  "main": "src/index.ts",
+  "private": true,
+  "keywords": [
+    "khirby-plugin"
+  ],
+  "peerDependencies": {
+    "@khirby/plugin-sdk": "^1.0.0",
+    "@modelcontextprotocol/node": "*",
+    "@modelcontextprotocol/server": "*",
+    "@nestjs/common": "*",
+    "@nestjs/core": "*",
+    "@nestjs/swagger": "*",
+    "bcryptjs": "*",
+    "drizzle-orm": "*",
+    "zod": "*",
+    "@khirby/plugin-host": "^1.0.0"
+  },
+  "types": "src/index.ts",
+  "dependencies": {
+    "@khirby/plugin-sdk": "^1.0.0",
+    "@khirby/plugin-host": "^1.0.0",
+    "hono": "4.13.1"
+  }
+}

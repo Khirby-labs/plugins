@@ -1,0 +1,12 @@
+node_modules/
+dist/
+**/dist/
+*.js
+*.js.map
+*.d.ts
+!**/eslint.config.js
+.DS_Store
+.env
+.env.*
+coverage/
+.pnpm-store/

@@ -1,0 +1,33 @@
+{
+  "name": "@khirby/plugin-listmonk",
+  "version": "1.1.0",
+  "description": "Khirby \u2014 listmonk newsletter integration plugin",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./web": "./src/web/index.ts"
+  },
+  "dependencies": {
+    "@khirby/plugin-sdk": "^1.0.0",
+    "@khirby/plugin-host": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@khirby/plugin-sdk": "^1.0.0",
+    "@khirby/plugin-host": "^1.0.0",
+    "@nestjs/common": "*",
+    "@nestjs/swagger": "*",
+    "class-validator": "*",
+    "drizzle-orm": "*",
+    "vue": "^3",
+    "vue-i18n": "*",
+    "vue-router": "^4"
+  },
+  "keywords": [
+    "khirby-plugin"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
+}
