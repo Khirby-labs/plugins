@@ -32,3 +32,10 @@ See the CRM repo `docs/PLUGINS.md` and `@khirby/plugin-sdk` / `@khirby/plugin-ho
 ## License
 
 [MIT](./LICENSE) © Khirby Labs
+
+## Development
+
+These packages are meant to be checked out into the CRM monorepo's `plugins/`
+directory (`workspace:*` peers resolve to `packages/plugin-sdk` / `plugin-host`
+there). Standalone `pnpm install` in this repo alone is not supported until the
+host packages are published to npm.
