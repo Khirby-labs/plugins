@@ -1,6 +1,6 @@
 {
   "name": "@khirby/plugin-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Khirby — MCP server for external AI agents (read-only contacts & leads)",
   "main": "src/index.ts",
   "keywords": [
