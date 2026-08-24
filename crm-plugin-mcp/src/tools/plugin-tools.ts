@@ -51,6 +51,10 @@ function unavailable() {
   return codedError('unavailable', 'Instance plugin host is not wired');
 }
 
+const directoryField = z
+  .string()
+  .describe('Volume folder, crm_* name, or SPA slug (hello-world-stats). Not the /plugins/ URL');
+
 export type PluginToolDeps = {
   instance?: InstancePluginsLike | null;
 };
@@ -64,7 +68,7 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
     'describe_plugin_contract',
     {
       description:
-        'Return the live CrmPlugin contract for instance self-build: events, host imports, volume hot-load, and the Vue ./web ban.',
+        'Authoring spec for instance plugins (https://khirby.com/docs/plugins/create plus volume rules). Call before scaffold and follow it.',
       inputSchema: z.object({}),
     },
     async () => {
@@ -74,21 +78,55 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
   );
 
   server.registerTool(
+    'list_installed_plugins',
+    {
+      description:
+        'List plugins loaded in this process with volume directory (null if image/native) and SPA pages. Use directory for list/read/write/install — never the SPA path.',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      if (!deps.instance) return unavailable();
+      const instance = deps.instance;
+      const names = instance.loadedNames();
+      return jsonResult({
+        plugins: names.map((name) => ({
+          name,
+          directory: instance.instanceDirectory(name),
+          pages: instance.frontendPages(name),
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
     'scaffold_plugin',
     {
       description:
-        'Write a npm-shaped plugin skeleton under plugins/<directory>/. Does not hot-load.',
+        'Write the published-plugin-shaped ESM skeleton under plugins/<directory>/ (createPlugin + src/nest-module.ts; getNestModule uses loadVolumeNestModule). Optional install hot-loads it into this CRM process.',
       inputSchema: z.object({
-        directory: z.string().describe('Single path segment under plugins/ (e.g. crm-plugin-demo)'),
+        directory: z.string().describe('One-segment folder under plugins/ (e.g. crm-plugin-demo)'),
         name: z.string().describe('Plugin crm_* name'),
         displayName: z.string().optional(),
-        nest: z.boolean().optional().describe('Include a gated Nest ping controller'),
+        nest: z.boolean().optional().describe('Include a gated Nest controller (default true)'),
+        install: z.boolean().optional().describe('Hot-load after scaffold (default false)'),
       }),
     },
-    async ({ directory, name, displayName, nest }) => {
+    async ({ directory, name, displayName, nest, install }) => {
       if (!deps.instance) return unavailable();
       try {
-        return jsonResult(deps.instance.scaffold({ directory, name, displayName, nest }));
+        const scaffolded = deps.instance.scaffold({
+          directory,
+          name,
+          displayName,
+          nest: nest === false ? false : true,
+        });
+        if (!install) return jsonResult(scaffolded);
+        const result = await deps.instance.installFromDirectory(directory);
+        return jsonResult({
+          ...scaffolded,
+          installed: result,
+          pages: deps.instance.frontendPages(result.name),
+        });
       } catch (err) {
         return errorResult(err);
       }
@@ -99,9 +137,9 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
     'write_instance_plugin_file',
     {
       description:
-        'Write one relative file inside plugins/<directory>/ (scaffold fill). Caps: 24 files, 100KB.',
+        'Write one relative file inside plugins/<directory>/ (scaffold fill). Caps: 24 files, 100KB. Reloads the live GET handler in this CRM process (no Marketplace).',
       inputSchema: z.object({
-        directory: z.string().describe('Single path segment under plugins/ (e.g. crm-plugin-demo)'),
+        directory: directoryField,
         path: z.string().describe('Relative file path, e.g. src/index.ts'),
         content: z.string().describe('Full file contents'),
       }),
@@ -109,7 +147,9 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
     async ({ directory, path, content }) => {
       if (!deps.instance) return unavailable();
       try {
-        return jsonResult(deps.instance.writeFile(directory, path, content));
+        const written = deps.instance.writeFile(directory, path, content);
+        const reloaded = await deps.instance.reloadFromDirectory(directory);
+        return jsonResult({ ...written, reload: reloaded.status });
       } catch (err) {
         return errorResult(err);
       }
@@ -121,7 +161,7 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
     {
       description: 'Read one relative file from plugins/<directory>/.',
       inputSchema: z.object({
-        directory: z.string().describe('Single path segment under plugins/ (e.g. crm-plugin-demo)'),
+        directory: directoryField,
         path: z.string().describe('Relative file path, e.g. src/index.ts'),
       }),
     },
@@ -140,7 +180,7 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
     {
       description: 'List relative files in plugins/<directory>/.',
       inputSchema: z.object({
-        directory: z.string().describe('Single path segment under plugins/ (e.g. crm-plugin-demo)'),
+        directory: directoryField,
       }),
     },
     async ({ directory }) => {
@@ -158,7 +198,7 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
     {
       description: 'Load createPlugin() from plugins/<directory>/ without activating it.',
       inputSchema: z.object({
-        directory: z.string().describe('Single path segment under plugins/ (e.g. crm-plugin-demo)'),
+        directory: directoryField,
       }),
     },
     async ({ directory }) => {
@@ -176,20 +216,42 @@ export function registerPluginTools(server: McpServer, deps: PluginToolDeps): vo
     'install_instance_plugin',
     {
       description:
-        'Validate, append the instance manifest, and hot-load the plugin into this process (no Vue ./web).',
+        'Validate, append the instance manifest, and hot-load (or reload) the plugin into this CRM process — no Marketplace, no Vue ./web.',
       inputSchema: z.object({
-        directory: z.string().describe('Single path segment under plugins/ (e.g. crm-plugin-demo)'),
+        directory: directoryField,
         packageName: z.string().optional().describe('package.json name; defaults to directory'),
       }),
     },
     async ({ directory, packageName }) => {
       if (!deps.instance) return unavailable();
       try {
-        const abs = deps.instance.packageDir(directory);
-        const checked = deps.instance.validate(abs);
-        deps.instance.appendManifest(packageName ?? directory, directory);
-        const loaded = await deps.instance.hotLoad(abs);
-        return jsonResult({ ok: true, name: loaded.name, validated: checked.name });
+        const result = await deps.instance.installFromDirectory(directory, packageName);
+        return jsonResult({
+          ok: true,
+          name: result.name,
+          status: result.status,
+          pages: deps.instance.frontendPages(result.name),
+        });
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'remove_instance_plugin',
+    {
+      description:
+        'Delete plugins/<dir>/, manifest entry, and DB row (API restart clears in-memory code)',
+      inputSchema: z.object({
+        directory: directoryField,
+      }),
+    },
+    async ({ directory }) => {
+      if (!deps.instance) return unavailable();
+      try {
+        const removed = await deps.instance.removeInstance(directory);
+        return jsonResult({ ok: true, name: removed.name });
       } catch (err) {
         return errorResult(err);
       }

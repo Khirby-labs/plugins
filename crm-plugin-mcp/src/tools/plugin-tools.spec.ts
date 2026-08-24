@@ -9,12 +9,17 @@ describe('registerPluginTools', () => {
     packageDir: jest.fn(),
     reservedNames: jest.fn(),
     loadedNames: jest.fn(),
+    frontendPages: jest.fn(),
+    instanceDirectory: jest.fn(),
     hotLoad: jest.fn(),
     validate: jest.fn(),
+    installFromDirectory: jest.fn(),
+    removeInstance: jest.fn(),
     appendManifest: jest.fn(),
     pluginContract: jest.fn(),
     scaffold: jest.fn(),
     writeFile: jest.fn(),
+    reloadFromDirectory: jest.fn(),
     readFile: jest.fn(),
     listFiles: jest.fn(),
   };
@@ -26,6 +31,8 @@ describe('registerPluginTools', () => {
     instance.packageDir.mockImplementation((directory) => `/data/instance-plugins/${directory}`);
     instance.reservedNames.mockReturnValue(['crm_mcp', 'crm_hello']);
     instance.loadedNames.mockReturnValue(['crm_mcp']);
+    instance.frontendPages.mockReturnValue([]);
+    instance.instanceDirectory.mockReturnValue(null);
     instance.pluginContract.mockReturnValue(
       'contact.created INSTANCE_PLUGINS_DIR ./web web_not_hot_loadable',
     );
@@ -45,8 +52,10 @@ describe('registerPluginTools', () => {
     expect([...handlers.keys()].sort()).toEqual([
       'describe_plugin_contract',
       'install_instance_plugin',
+      'list_installed_plugins',
       'list_instance_plugin_files',
       'read_instance_plugin_file',
+      'remove_instance_plugin',
       'scaffold_plugin',
       'validate_plugin',
       'write_instance_plugin_file',
@@ -81,7 +90,55 @@ describe('registerPluginTools', () => {
     expect(JSON.parse(reserved.content[0]!.text).error).toBe('reserved_name');
   });
 
-  it('scaffold_plugin forwards to the host', async () => {
+  it('list_installed_plugins returns directory and SPA pages from the host', async () => {
+    instance.loadedNames.mockReturnValue(['crm_hello_world_stats']);
+    instance.instanceDirectory.mockReturnValue('hello-world');
+    instance.frontendPages.mockReturnValue([
+      { path: '/plugins/hello-world-stats', navLabel: 'Hello World' },
+    ]);
+    const result = (await handlers.get('list_installed_plugins')!({})) as {
+      content: { text: string }[];
+    };
+    expect(JSON.parse(result.content[0]!.text)).toEqual({
+      plugins: [
+        {
+          name: 'crm_hello_world_stats',
+          directory: 'hello-world',
+          pages: [{ path: '/plugins/hello-world-stats', navLabel: 'Hello World' }],
+        },
+      ],
+    });
+  });
+
+  it('remove_instance_plugin forwards to the host', async () => {
+    instance.removeInstance.mockResolvedValue({ name: 'crm_demo' });
+    const result = (await handlers.get('remove_instance_plugin')!({
+      directory: 'my-demo',
+    })) as { content: { text: string }[] };
+    expect(instance.removeInstance).toHaveBeenCalledWith('my-demo');
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ ok: true, name: 'crm_demo' });
+  });
+
+  it('scaffold_plugin install:true hot-loads through the host', async () => {
+    instance.scaffold.mockReturnValue({
+      directory: '/data/instance-plugins/my-demo',
+      files: ['package.json', 'src/index.ts'],
+    });
+    instance.installFromDirectory.mockResolvedValue({ name: 'crm_demo', status: 'installed' });
+    instance.frontendPages.mockReturnValue([{ path: '/plugins/demo', navLabel: 'Demo' }]);
+    const result = (await handlers.get('scaffold_plugin')!({
+      directory: 'my-demo',
+      name: 'crm_demo',
+      install: true,
+    })) as { content: { text: string }[] };
+    expect(instance.installFromDirectory).toHaveBeenCalledWith('my-demo');
+    expect(JSON.parse(result.content[0]!.text).installed).toEqual({
+      name: 'crm_demo',
+      status: 'installed',
+    });
+  });
+
+  it('scaffold_plugin forwards to the host and defaults nest true', async () => {
     instance.scaffold.mockReturnValue({
       directory: '/data/instance-plugins/my-demo',
       files: ['package.json', 'src/index.ts'],
@@ -89,7 +146,6 @@ describe('registerPluginTools', () => {
     const result = (await handlers.get('scaffold_plugin')!({
       directory: 'my-demo',
       name: 'crm_demo',
-      nest: true,
     })) as { content: { text: string }[] };
     expect(instance.scaffold).toHaveBeenCalledWith({
       directory: 'my-demo',
@@ -120,19 +176,17 @@ describe('registerPluginTools', () => {
     expect(JSON.parse(result.content[0]!.text).error).toBe('web_not_hot_loadable');
   });
 
-  it('install_instance_plugin appends the manifest then hot-loads', async () => {
-    instance.validate.mockReturnValue({ name: 'crm_demo' });
-    instance.hotLoad.mockResolvedValue({ name: 'crm_demo' });
+  it('install_instance_plugin forwards to installFromDirectory', async () => {
+    instance.installFromDirectory.mockResolvedValue({ name: 'crm_demo', status: 'installed' });
     const result = (await handlers.get('install_instance_plugin')!({
       directory: 'my-demo',
     })) as { content: { text: string }[] };
-    expect(instance.packageDir).toHaveBeenCalledWith('my-demo');
-    expect(instance.appendManifest).toHaveBeenCalledWith('my-demo', 'my-demo');
-    expect(instance.hotLoad).toHaveBeenCalledWith('/data/instance-plugins/my-demo');
+    expect(instance.installFromDirectory).toHaveBeenCalledWith('my-demo', undefined);
     expect(JSON.parse(result.content[0]!.text)).toEqual({
       ok: true,
       name: 'crm_demo',
-      validated: 'crm_demo',
+      status: 'installed',
+      pages: [],
     });
   });
 
@@ -148,6 +202,7 @@ describe('registerPluginTools', () => {
       }
       return { directory, path, bytes: 18 };
     });
+    instance.reloadFromDirectory.mockResolvedValue({ name: 'crm_demo', status: 'reloaded' });
     instance.listFiles.mockReturnValue({ directory: 'my-demo', files: ['src/index.ts'] });
     instance.readFile.mockReturnValue({
       directory: 'my-demo',
@@ -168,6 +223,7 @@ describe('registerPluginTools', () => {
       path: 'src/index.ts',
       content: 'export const x = 1\n',
     });
+    expect(instance.reloadFromDirectory).toHaveBeenCalledWith('my-demo');
     const listed = (await handlers.get('list_instance_plugin_files')!({
       directory: 'my-demo',
     })) as { content: { text: string }[] };
