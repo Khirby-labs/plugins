@@ -10,3 +10,10 @@ dist/
 .env.*
 coverage/
 .pnpm-store/
+
+# Local instance / unpublished working plugins (not crm-plugin-*)
+instance.manifest.json
+hello-world/
+crm_hello_world_stats/
+
+node_modules

@@ -1,5 +1,6 @@
 import { encrypt, decrypt, isAiComposeSecretsKeyConfigured } from './ai-compose-crypto';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
+import { AiComposeLlmService } from './ai-compose-llm.service';
 import {
   AiComposeSuggestService,
   stripCodeFences,
@@ -687,5 +688,39 @@ describe('stripCodeFences', () => {
 
   it('leaves plain text alone', () => {
     expect(stripCodeFences('Just text')).toBe('Just text');
+  });
+});
+
+describe('AiComposeLlmService', () => {
+  it('returns null when no default model is set', async () => {
+    const settings = {
+      assertPluginEnabled: jest.fn().mockResolvedValue(undefined),
+      getDecryptedApiKey: jest.fn().mockResolvedValue({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.openai.com/v1',
+      }),
+      getDefaultModel: jest.fn().mockResolvedValue(null),
+    } as unknown as AiComposeSettingsService;
+
+    const svc = new AiComposeLlmService(settings);
+    await expect(svc.getCompletionConfig()).resolves.toBeNull();
+  });
+
+  it('returns BYOK config when settings are complete', async () => {
+    const settings = {
+      assertPluginEnabled: jest.fn().mockResolvedValue(undefined),
+      getDecryptedApiKey: jest.fn().mockResolvedValue({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.openai.com/v1',
+      }),
+      getDefaultModel: jest.fn().mockResolvedValue('gpt-4o-mini'),
+    } as unknown as AiComposeSettingsService;
+
+    const svc = new AiComposeLlmService(settings);
+    await expect(svc.getCompletionConfig()).resolves.toEqual({
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+    });
   });
 });
