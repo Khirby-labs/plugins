@@ -1,9 +1,10 @@
-import { Injectable, Inject, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Inject, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import {
   PLUGIN_REGISTRY,
+  INSTANCE_PLUGINS,
   CONTACTS_SERVICE,
   LEADS_SERVICE,
   PIPELINE_STAGES_SERVICE,
@@ -14,11 +15,13 @@ import {
   BOARD_TASKS_SERVICE,
   BOARD_STATUSES_SERVICE,
   type PluginRegistryLike,
+  type InstancePluginsLike,
 } from '../../../packages/plugin-host/src';
 import { MCP_PLUGIN_NAME, McpTokenService, parseBearerToken } from './mcp-token.service';
 import { registerCrmTools } from './tools/crm-tools';
 import { registerMailTools } from './tools/mail-tools';
 import { registerBoardTools } from './tools/board-tools';
+import { registerPluginTools } from './tools/plugin-tools';
 
 const MCP_PATH = '/api/mcp';
 const THROTTLE_WINDOW_MS = 60_000;
@@ -44,6 +47,7 @@ export class McpHttpService implements OnModuleInit {
     @Inject(BOARD_MODULES_SERVICE) private readonly boardModules: any,
     @Inject(BOARD_TASKS_SERVICE) private readonly boardTasks: any,
     @Inject(BOARD_STATUSES_SERVICE) private readonly boardStatuses: any,
+    @Optional() @Inject(INSTANCE_PLUGINS) private readonly instancePlugins?: InstancePluginsLike,
   ) {}
 
   onModuleInit(): void {
@@ -66,7 +70,7 @@ export class McpHttpService implements OnModuleInit {
     // console.warn on every boot about dropped mid-call notifications.
     const mcpHandler = createMcpHandler(
       () => {
-        const server = new McpServer({ name: 'bearly-crm', version: '1.0.0' });
+        const server = new McpServer({ name: 'bearly-crm', version: '1.3.0' });
         registerCrmTools(server, {
           contacts: this.contacts,
           leads: this.leads,
@@ -82,6 +86,7 @@ export class McpHttpService implements OnModuleInit {
           tasks: this.boardTasks,
           statuses: this.boardStatuses,
         });
+        registerPluginTools(server, { instance: this.instancePlugins });
         return server;
       },
       { responseMode: 'auto' },
