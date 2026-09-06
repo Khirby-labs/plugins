@@ -59,14 +59,14 @@ export type McpCrmServices = {
 const leadPrioritySchema = z.enum(['low', 'medium', 'high']);
 
 /**
- * CRM contacts + leads MCP tools (ADR-0013 read; ADR-0028 create/update).
+ * CRM contacts + leads MCP tools (ADR-0013 read; ADR-0028 create/update; ADR-0041 custom/import).
  * Hard deletes stay in the CRM UI — same policy as boards (ADR-0027).
  */
 export function registerCrmTools(server: McpServer, svc: McpCrmServices): void {
   server.registerTool(
     'list_contacts',
     {
-      description: 'List contacts with optional email/name search. Paginated.',
+      description: 'List contacts with optional search and customField=slug:value filter. Paginated.',
       inputSchema: z.object({
         page: z.number().int().min(1).optional().describe('Page number (default 1)'),
         pageSize: z
@@ -76,14 +76,19 @@ export function registerCrmTools(server: McpServer, svc: McpCrmServices): void {
           .max(MAX_PAGE_SIZE)
           .optional()
           .describe(`Page size (default 20, max ${MAX_PAGE_SIZE})`),
-        search: z.string().optional().describe('Filter by email or name (case-insensitive)'),
+        search: z.string().optional().describe('Filter by email, name, phone, or custom field text'),
+        customField: z
+          .string()
+          .optional()
+          .describe('Filter by custom field as slug:value (list_custom_fields for slugs)'),
       }),
     },
-    async ({ page, pageSize, search }) => {
+    async ({ page, pageSize, search, customField }) => {
       const result = await svc.contacts.findAll({
         page: page ?? 1,
         pageSize: pageSize ?? 20,
         search,
+        customField,
       });
       return jsonResult(result);
     },
@@ -111,11 +116,16 @@ export function registerCrmTools(server: McpServer, svc: McpCrmServices): void {
   server.registerTool(
     'create_contact',
     {
-      description: 'Create a contact. Email must be unique.',
+      description:
+        'Create a contact. Email must be unique. Use custom (slug → value) for operator fields — list_custom_fields first. Do not put custom fields in metadata.',
       inputSchema: z.object({
         email: z.string().email().describe('Contact email (unique)'),
         name: z.string().optional().describe('Display name'),
         phone: z.string().optional().describe('Phone number'),
+        custom: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe('Custom field slug → value (merged into metadata.custom)'),
         metadata: z.record(z.string(), z.unknown()).optional().describe('Arbitrary JSON metadata'),
       }),
     },
@@ -131,18 +141,64 @@ export function registerCrmTools(server: McpServer, svc: McpCrmServices): void {
   server.registerTool(
     'update_contact',
     {
-      description: 'Update a contact by ID. Pass only fields to change.',
+      description:
+        'Update a contact by ID. Pass only fields to change. custom merges into metadata.custom without replacing interests/listmonk. Use list_custom_fields for slugs.',
       inputSchema: z.object({
         id: z.string().uuid().describe('Contact UUID'),
         email: z.string().email().optional().describe('New email (must stay unique)'),
         name: z.string().optional().describe('Display name'),
         phone: z.string().nullable().optional().describe('Phone number; null clears'),
+        custom: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe('Custom field slug → value (jsonb_set merge)'),
         metadata: z.record(z.string(), z.unknown()).optional().describe('Replaces metadata object'),
       }),
     },
     async ({ id, ...dto }) => {
       try {
         return jsonResult(await svc.contacts.update(id, dto));
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'list_custom_fields',
+    {
+      description:
+        'List contact custom field definitions (slug, type, select options). Call before setting custom or mapping an import.',
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try {
+        return jsonResult(await svc.contacts.listCustomFields());
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'import_contacts',
+    {
+      description:
+        'Import contacts from mapped row objects (max 1000). mapping is CRM field (email, name, phone, or custom slug) → column name on each row. Duplicate emails are skipped.',
+      inputSchema: z.object({
+        mapping: z
+          .record(z.string(), z.string())
+          .describe('CRM field → row column name. email is required.'),
+        rows: z
+          .array(z.record(z.string(), z.unknown()))
+          .min(1)
+          .max(1000)
+          .describe('Row objects keyed by the CSV/column names in mapping'),
+      }),
+    },
+    async (dto) => {
+      try {
+        return jsonResult(await svc.contacts.importRows(dto));
       } catch (err) {
         return errorResult(err);
       }
