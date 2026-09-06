@@ -6,7 +6,7 @@ export class McpPlugin implements CrmPlugin {
   name = 'crm_mcp';
   displayName = 'MCP Server';
   displayNameKey = 'plugins.mcp.displayName';
-  description = 'Exposes read-only CRM tools to external AI agents over MCP';
+  description = 'Connect an AI agent (Cursor, Claude) to create and update contacts with custom fields, leads, and boards; import contacts; and send mail attributed to a user—hard deletes stay in the CRM.';
   descriptionKey = 'plugins.mcp.description';
   version = '1.0.0';
 
