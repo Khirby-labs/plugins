@@ -7,6 +7,8 @@ describe('registerCrmTools', () => {
     findById: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    listCustomFields: jest.fn(),
+    importRows: jest.fn(),
   };
   const leads = {
     getBoard: jest.fn(),
@@ -48,7 +50,9 @@ describe('registerCrmTools', () => {
       'get_contact',
       'get_lead',
       'get_leads_board',
+      'import_contacts',
       'list_contacts',
+      'list_custom_fields',
       'list_lead_assignees',
       'list_pipeline_stages',
       'update_contact',
@@ -132,5 +136,35 @@ describe('registerCrmTools', () => {
 
     await handlers.get('list_lead_assignees')!({});
     expect(leads.getAssignees).toHaveBeenCalled();
+  });
+
+  it('update_contact passes custom through to ContactsService.update', async () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    contacts.update.mockResolvedValue({ id, metadata: { custom: { mrr: 1200 } } });
+    await handlers.get('update_contact')!({ id, custom: { mrr: 1200 } });
+    expect(contacts.update).toHaveBeenCalledWith(id, { custom: { mrr: 1200 } });
+  });
+
+  it('list_custom_fields and import_contacts delegate', async () => {
+    contacts.listCustomFields.mockResolvedValue([{ slug: 'mrr', type: 'number' }]);
+    const listed = (await handlers.get('list_custom_fields')!({})) as {
+      content: { text: string }[];
+    };
+    expect(JSON.parse(listed.content[0]!.text)).toEqual([{ slug: 'mrr', type: 'number' }]);
+
+    contacts.importRows.mockResolvedValue({ imported: 1, skipped: 0, errors: [] });
+    const imported = (await handlers.get('import_contacts')!({
+      mapping: { email: 'Email' },
+      rows: [{ Email: 'a@b.c' }],
+    })) as { content: { text: string }[] };
+    expect(contacts.importRows).toHaveBeenCalledWith({
+      mapping: { email: 'Email' },
+      rows: [{ Email: 'a@b.c' }],
+    });
+    expect(JSON.parse(imported.content[0]!.text)).toEqual({
+      imported: 1,
+      skipped: 0,
+      errors: [],
+    });
   });
 });
