@@ -34,9 +34,23 @@ pnpm sync:plugins
 
 CI clones this repository into `plugins/` before `pnpm install` / Docker build.
 
+## Publishing
+
+Bump **`package.json` version** in the plugin you want to ship (`patch` / `minor` / `major`), then merge to `main`. GitHub Actions publishes that version to npm if it is not already there. It never auto-bumps — a merge without a bump stays git-only.
+
+```bash
+# dry-run (what would publish vs npm)
+./scripts/publish-changed-plugins.sh --dry-run
+
+# warn if a dir changed since main but the version is already published
+./scripts/publish-changed-plugins.sh --dry-run --since origin/main
+```
+
+Required repo secret: `NPM_TOKEN`. Control Plane mirrors npm when an operator opens the plugin in admin (or `POST /v1/admin/plugins/:id/sync`).
+
 ## Authoring
 
-See the CRM repo `docs/PLUGINS.md` and `@khirby/plugin-sdk` / `@khirby/plugin-host` on npm.
+See the CRM repo `docs/PLUGINS.md` and `@khirby/plugin-sdk` / `@khirby/plugin-host` on npm. First-party release steps: CRM skill `/publish-plugin`.
 
 ## License
 

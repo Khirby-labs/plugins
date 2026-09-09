@@ -1,0 +1,76 @@
+name: Publish npm packages
+
+# Bump package.json in git is the release. This job publishes @khirby/plugin-*
+# whose version is not yet on npm. It never auto-bumps.
+#
+# Required secret: NPM_TOKEN
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List what would publish without publishing'
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    name: Publish changed plugins
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install workspace
+        run: pnpm install
+
+      - name: Since SHA
+        id: since
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            before="${{ github.event.before }}"
+            if [ -z "$before" ] || [[ "$before" =~ ^0+$ ]]; then
+              echo "sha=" >> "$GITHUB_OUTPUT"
+            else
+              echo "sha=$before" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "sha=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish (or dry-run)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          chmod +x scripts/publish-changed-plugins.sh
+          args=()
+          if [ -n "${{ steps.since.outputs.sha }}" ]; then
+            args+=(--since "${{ steps.since.outputs.sha }}")
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          ./scripts/publish-changed-plugins.sh "${args[@]}"
