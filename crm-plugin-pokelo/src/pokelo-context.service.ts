@@ -9,6 +9,7 @@ const SNIPPET_MAX_CHARS = 800;
 type McpToolResult = {
   result?: {
     content?: Array<{ type?: string; text?: string }>;
+    isError?: boolean;
   };
   error?: { message?: string };
 };
@@ -177,6 +178,11 @@ export class PokeloContextService implements PokeloContextServiceLike {
     if (envelope.error) {
       throw new Error(envelope.error.message ?? 'Pokelo MCP tool error');
     }
+    // Pokelo maps tool failures to CallToolResult.isError (HTTP 200), not JSON-RPC error.
+    if (envelope.result?.isError) {
+      const msg = envelope.result.content?.[0]?.text?.trim() || 'Pokelo MCP tool error';
+      throw new Error(msg);
+    }
 
     return envelope.result?.content?.[0]?.text ?? '';
   }
@@ -223,12 +229,19 @@ export function parseProjectList(text: string): Array<{ id: string; name: string
   if (!text.trim()) return [];
   try {
     const parsed = JSON.parse(text) as {
-      items?: Array<{ id?: string; name?: string }>;
+      items?: Array<{ id?: string; projectId?: string; name?: string }>;
     };
     if (Array.isArray(parsed.items)) {
       return parsed.items
-        .filter((p): p is { id: string; name: string } => !!p.id && !!p.name)
-        .map((p) => ({ id: p.id, name: p.name }));
+        .map((p) => {
+          const id =
+            (typeof p.projectId === 'string' && p.projectId.trim()) ||
+            (typeof p.id === 'string' && p.id.trim()) ||
+            '';
+          const name = typeof p.name === 'string' ? p.name.trim() : '';
+          return { id, name };
+        })
+        .filter((p) => p.id && p.name);
     }
   } catch {
     // ignore

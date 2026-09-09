@@ -50,11 +50,27 @@ describe('parseSseJsonRpc / parseSearchMatches / parseProjectList', () => {
     expect(matches).toEqual(['Snippet A', 'Snippet B']);
   });
 
-  it('parses project list JSON', () => {
+  it('parses project list JSON with current MCP projectId', () => {
+    const projects = parseProjectList(
+      JSON.stringify({
+        items: [{ projectId: 'p1', name: 'Bearly CRM', slug: 'bearly-crm-p1' }, { name: 'x' }],
+      }),
+    );
+    expect(projects).toEqual([{ id: 'p1', name: 'Bearly CRM' }]);
+  });
+
+  it('parses legacy project list JSON with id', () => {
     const projects = parseProjectList(
       JSON.stringify({ items: [{ id: 'p1', name: 'Bearly CRM' }, { id: 'x' }] }),
     );
     expect(projects).toEqual([{ id: 'p1', name: 'Bearly CRM' }]);
+  });
+
+  it('prefers projectId over id when both are present', () => {
+    const projects = parseProjectList(
+      JSON.stringify({ items: [{ id: 'legacy', projectId: 'current', name: 'CRM' }] }),
+    );
+    expect(projects).toEqual([{ id: 'current', name: 'CRM' }]);
   });
 });
 
@@ -197,7 +213,7 @@ describe('PokeloContextService.fetchContext', () => {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ items: [{ id: 'proj-uuid', name: 'Bearly CRM' }] }),
+            text: JSON.stringify({ items: [{ projectId: 'proj-uuid', name: 'Bearly CRM' }] }),
           },
         ],
       },
@@ -264,8 +280,8 @@ describe('PokeloContextService.fetchContext', () => {
             type: 'text',
             text: JSON.stringify({
               items: [
-                { id: 'a', name: 'CRM' },
-                { id: 'b', name: 'Finsly' },
+                { projectId: 'a', name: 'CRM' },
+                { projectId: 'b', name: 'Finsly' },
               ],
             }),
           },
@@ -314,6 +330,35 @@ describe('PokeloContextService.fetchContext', () => {
       ok: false,
       status: 401,
       text: async () => 'Unauthorized',
+    });
+
+    const ctx = new PokeloContextService(settings);
+    expect(await ctx.fetchContext('pricing')).toBe('');
+  });
+
+  it('returns empty string on MCP tool isError instead of using the error as a snippet', async () => {
+    const settings = new PokeloSettingsService(
+      makeMockDb({
+        encryptedToken: encrypt('mcp_tok'),
+        projectIds: ['proj-uuid'],
+        projectId: 'proj-uuid',
+        baseUrl: 'https://rag.bearly.pro/v1',
+      }) as any,
+      makeMockRegistry(true) as any,
+    );
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      text: async () =>
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            isError: true,
+            content: [{ type: 'text', text: 'Project not found' }],
+          },
+        }),
     });
 
     const ctx = new PokeloContextService(settings);
