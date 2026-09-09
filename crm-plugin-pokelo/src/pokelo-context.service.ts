@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { PokeloContextServiceLike, PokeloFetchOpts } from '../../../packages/plugin-host/src';
+import type { KnowledgeContextLike, PokeloFetchOpts } from '../../../packages/plugin-host/src';
 import { PokeloSettingsService } from './pokelo-settings.service';
 
 const SNIPPET_LIMIT_TOTAL = 8;
@@ -15,7 +15,7 @@ type McpToolResult = {
 };
 
 @Injectable()
-export class PokeloContextService implements PokeloContextServiceLike {
+export class PokeloContextService implements KnowledgeContextLike {
   private readonly logger = new Logger(PokeloContextService.name);
 
   constructor(private readonly settings: PokeloSettingsService) {}

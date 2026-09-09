@@ -99,7 +99,7 @@ export class PokeloSettingsService {
     let encryptedToken: string | undefined = undefined;
     if (dto.token !== undefined && dto.token.trim()) {
       if (!isPokeloSecretsKeyConfigured()) {
-        throw AppException.badRequest('POKELO_SECRETS_KEY is not configured');
+        throw AppException.badRequest('KHIRBY_SECRETS_KEY is not configured');
       }
       encryptedToken = encrypt(dto.token.trim());
     }

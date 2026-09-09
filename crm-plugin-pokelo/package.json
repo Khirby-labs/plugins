@@ -1,6 +1,6 @@
 {
   "name": "@khirby/plugin-pokelo",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Khirby — Pokelo RAG knowledge base context for AI Compose",
   "main": "src/index.ts",
   "keywords": [

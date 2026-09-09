@@ -1,12 +1,12 @@
 import { Global, Module } from '@nestjs/common';
-import { POKELO_CONTEXT_SERVICE } from '../../../packages/plugin-host/src';
+import { KNOWLEDGE_CONTEXT, POKELO_CONTEXT_SERVICE } from '../../../packages/plugin-host/src';
 import { PokeloSettingsService } from './pokelo-settings.service';
 import { PokeloContextService } from './pokelo-context.service';
 import { PokeloSettingsController } from './pokelo-settings.controller';
 
 /**
- * @Global so AI Compose (sibling plugin module) can @Optional()-inject
- * POKELO_CONTEXT_SERVICE (ADR-0022).
+ * @Global so sibling plugins can @Optional()-inject KNOWLEDGE_CONTEXT (ADR-0047).
+ * POKELO_CONTEXT_SERVICE stays as a second provide until published consumers bump.
  */
 @Global()
 @Module({
@@ -14,8 +14,9 @@ import { PokeloSettingsController } from './pokelo-settings.controller';
   providers: [
     PokeloSettingsService,
     PokeloContextService,
+    { provide: KNOWLEDGE_CONTEXT, useExisting: PokeloContextService },
     { provide: POKELO_CONTEXT_SERVICE, useExisting: PokeloContextService },
   ],
-  exports: [POKELO_CONTEXT_SERVICE],
+  exports: [KNOWLEDGE_CONTEXT, POKELO_CONTEXT_SERVICE],
 })
 export class PokeloModule {}

@@ -7,10 +7,16 @@ describe('pokelo-crypto', () => {
   const HEX_KEY = 'c'.repeat(64);
 
   beforeEach(() => {
+    delete process.env.KHIRBY_SECRETS_KEY;
+    delete process.env.MAIL_SECRETS_KEY;
+    delete process.env.AI_COMPOSE_SECRETS_KEY;
     process.env.POKELO_SECRETS_KEY = HEX_KEY;
   });
 
   afterEach(() => {
+    delete process.env.KHIRBY_SECRETS_KEY;
+    delete process.env.MAIL_SECRETS_KEY;
+    delete process.env.AI_COMPOSE_SECRETS_KEY;
     delete process.env.POKELO_SECRETS_KEY;
   });
 
@@ -26,9 +32,15 @@ describe('pokelo-crypto', () => {
     expect(isPokeloSecretsKeyConfigured()).toBe(false);
   });
 
+  it('isPokeloSecretsKeyConfigured returns true when KHIRBY_SECRETS_KEY is set', () => {
+    delete process.env.POKELO_SECRETS_KEY;
+    process.env.KHIRBY_SECRETS_KEY = HEX_KEY;
+    expect(isPokeloSecretsKeyConfigured()).toBe(true);
+  });
+
   it('throws on missing key at encrypt time', () => {
     delete process.env.POKELO_SECRETS_KEY;
-    expect(() => encrypt('anything')).toThrow('POKELO_SECRETS_KEY is not set');
+    expect(() => encrypt('anything')).toThrow('KHIRBY_SECRETS_KEY is not set');
   });
 });
 
