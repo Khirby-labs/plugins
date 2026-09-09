@@ -79,6 +79,13 @@ has_web_build() {
 WARN=0
 PUBLISHED=0
 SKIPPED=0
+INSTALLED=0
+
+ensure_install() {
+  if [[ "$INSTALLED" -eq 1 ]]; then return; fi
+  pnpm install --ignore-scripts
+  INSTALLED=1
+}
 
 for dir in "${PACKAGES[@]}"; do
   if [[ ! -f "$dir/package.json" ]]; then
@@ -113,10 +120,11 @@ for dir in "${PACKAGES[@]}"; do
   fi
 
   if has_web_build "$dir"; then
+    ensure_install
     pnpm --filter "$name" run build:web
   fi
 
-  pnpm --filter "$name" publish --access public --no-git-checks
+  ( cd "$dir" && npm publish --access public )
   PUBLISHED=$((PUBLISHED + 1))
 done
 

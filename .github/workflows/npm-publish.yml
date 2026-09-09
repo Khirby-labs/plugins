@@ -42,9 +42,6 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Install workspace
-        run: pnpm install
-
       - name: Since SHA
         id: since
         run: |
