@@ -4,7 +4,6 @@ import { AiComposeLlmService } from './ai-compose-llm.service';
 import {
   AiComposeSuggestService,
   stripCodeFences,
-  parsePokeloRoute,
 } from './ai-compose-suggest.service';
 import { AppException } from '../../../packages/plugin-host/src';
 
@@ -16,11 +15,17 @@ describe('ai-compose-crypto', () => {
   const HEX_KEY = 'a'.repeat(64);
 
   beforeEach(() => {
+    delete process.env.KHIRBY_SECRETS_KEY;
+    delete process.env.MAIL_SECRETS_KEY;
+    delete process.env.POKELO_SECRETS_KEY;
     process.env.AI_COMPOSE_SECRETS_KEY = HEX_KEY;
   });
 
   afterEach(() => {
+    delete process.env.KHIRBY_SECRETS_KEY;
+    delete process.env.MAIL_SECRETS_KEY;
     delete process.env.AI_COMPOSE_SECRETS_KEY;
+    delete process.env.POKELO_SECRETS_KEY;
   });
 
   it('encrypts and decrypts back to the same plaintext', () => {
@@ -42,7 +47,7 @@ describe('ai-compose-crypto', () => {
 
   it('throws on missing key at encrypt time', () => {
     delete process.env.AI_COMPOSE_SECRETS_KEY;
-    expect(() => encrypt('anything')).toThrow('AI_COMPOSE_SECRETS_KEY is not set');
+    expect(() => encrypt('anything')).toThrow('KHIRBY_SECRETS_KEY is not set');
   });
 });
 
@@ -118,6 +123,7 @@ describe('AiComposeSettingsService', () => {
     const settings = await service.getSettings();
     expect(settings.apiKeyConfigured).toBe(false);
     expect(settings.baseUrl).toBe('https://api.openai.com/v1');
+    expect(settings.reasoningEffort).toBe(null);
   });
 
   it('getSettings returns apiKeyConfigured: true when row has apiKeyEnc', async () => {
@@ -155,6 +161,15 @@ describe('AiComposeSettingsService', () => {
     const service = new AiComposeSettingsService(db as any, registry as any);
     await expect(service.updateSettings({ baseUrl: 'http://localhost' })).resolves.toBeDefined();
   });
+
+  it('updateSettings rejects an unknown reasoningEffort', async () => {
+    const db = makeMockDb();
+    const registry = makeMockRegistry(true);
+    const service = new AiComposeSettingsService(db as any, registry as any);
+    await expect(service.updateSettings({ reasoningEffort: 'banana' as any })).rejects.toThrow(
+      'reasoningEffort',
+    );
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -168,6 +183,7 @@ function makeSettingsService(
     allowedModels: string[];
     defaultModel: string | null;
     systemPrompt: string | null;
+    reasoningEffort: 'none' | 'low' | 'medium' | 'high' | null;
   }> = {},
 ) {
   const cfg = {
@@ -176,6 +192,7 @@ function makeSettingsService(
     allowedModels: ['gpt-4o', 'gpt-3.5-turbo'],
     defaultModel: 'gpt-4o',
     systemPrompt: null,
+    reasoningEffort: null as 'none' | 'low' | 'medium' | 'high' | null,
     ...overrides,
   };
 
@@ -184,8 +201,38 @@ function makeSettingsService(
     getAllowedModels: jest.fn().mockResolvedValue(cfg.allowedModels),
     getDefaultModel: jest.fn().mockResolvedValue(cfg.defaultModel),
     getSystemPrompt: jest.fn().mockResolvedValue(cfg.systemPrompt),
+    getReasoningEffort: jest.fn().mockResolvedValue(cfg.reasoningEffort),
     assertPluginEnabled: jest.fn().mockResolvedValue(undefined),
   };
+}
+
+function mockProviderFetch(
+  opts: {
+    models?: Array<Record<string, unknown>>;
+    content?: string;
+  } = {},
+) {
+  (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+    if (String(url).includes('/models')) {
+      return {
+        ok: true,
+        json: async () => ({ data: opts.models ?? [] }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: opts.content ?? 'ok' } }],
+      }),
+    };
+  });
+}
+
+function chatBodyFromFetch(index = 0): Record<string, unknown> {
+  const calls = (global.fetch as jest.Mock).mock.calls.filter((c: [string]) =>
+    String(c[0]).includes('/chat/completions'),
+  );
+  return JSON.parse(calls[index][1].body);
 }
 
 const MOCK_THREAD = {
@@ -255,6 +302,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
+      null,
     );
 
     const result = await service.suggest({ threadId: 'thread-1', leadId: 'l-1' });
@@ -266,12 +314,121 @@ describe('AiComposeSuggestService', () => {
     );
   });
 
+  it('sends reasoning_effort when the catalog advertises it', async () => {
+    mockProviderFetch({
+      models: [
+        {
+          id: 'reasoner',
+          object: 'model',
+          supported_parameters: ['max_tokens', 'reasoning_effort'],
+        },
+      ],
+    });
+    const settings = makeSettingsService({
+      defaultModel: 'reasoner',
+      allowedModels: ['reasoner'],
+      reasoningEffort: 'high',
+    });
+    const service = new AiComposeSuggestService(
+      settings as any,
+      mockMailThreads as any,
+      mockLeads as any,
+      null,
+    );
+    await service.suggest({ threadId: 'thread-1' });
+    const body = chatBodyFromFetch();
+    expect(body.reasoning_effort).toBe('high');
+    expect(body.temperature).toBeUndefined();
+  });
+
+  it('does not send reasoning_effort when the catalog lists params without it', async () => {
+    mockProviderFetch({
+      models: [
+        {
+          id: 'gpt-4o',
+          object: 'model',
+          supported_parameters: ['temperature', 'max_tokens'],
+        },
+      ],
+    });
+    const settings = makeSettingsService({ reasoningEffort: 'high' });
+    const service = new AiComposeSuggestService(
+      settings as any,
+      mockMailThreads as any,
+      mockLeads as any,
+      null,
+    );
+    await service.suggest({ threadId: 'thread-1' });
+    const body = chatBodyFromFetch();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.temperature).toBe(0.7);
+  });
+
+  it('tries reasoning_effort when the catalog is silent, then drops it after HTTP 400', async () => {
+    let completions = 0;
+    (global.fetch as jest.Mock).mockImplementation(async (url: string) => {
+      if (String(url).includes('/models')) {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ id: 'gpt-4o', object: 'model' }] }),
+        };
+      }
+      completions += 1;
+      if (completions === 1) {
+        return { ok: false, status: 400, text: async () => 'unknown parameter' };
+      }
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+      };
+    });
+    const settings = makeSettingsService({ reasoningEffort: 'high' });
+    const service = new AiComposeSuggestService(
+      settings as any,
+      mockMailThreads as any,
+      mockLeads as any,
+      null,
+    );
+    await service.suggest({ threadId: 'thread-1' });
+    expect(completions).toBe(2);
+    expect(chatBodyFromFetch(0).reasoning_effort).toBe('high');
+    expect(chatBodyFromFetch(1).reasoning_effort).toBeUndefined();
+
+    await service.suggest({ threadId: 'thread-1' });
+    expect(completions).toBe(3);
+    expect(chatBodyFromFetch(2).reasoning_effort).toBeUndefined();
+  });
+
+  it('exposes catalog reasoning flags from fetchModels', async () => {
+    mockProviderFetch({
+      models: [
+        { id: 'a', object: 'model', supported_parameters: ['reasoning'] },
+        { id: 'b', object: 'model', supported_parameters: ['temperature'] },
+        { id: 'c', object: 'model' },
+      ],
+    });
+    const service = new AiComposeSuggestService(
+      makeSettingsService() as any,
+      mockMailThreads as any,
+      mockLeads as any,
+      null,
+    );
+    await expect(
+      service.fetchModels('https://api.openai.com/v1', 'sk-test'),
+    ).resolves.toEqual([
+      { id: 'a', label: 'a', supportsReasoning: true },
+      { id: 'b', label: 'b', supportsReasoning: false },
+      { id: 'c', label: 'c', supportsReasoning: null },
+    ]);
+  });
+
   it('throws 400 when model not in allowlist', async () => {
     const settings = makeSettingsService({ allowedModels: ['gpt-4o'] });
     const service = new AiComposeSuggestService(
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
+      null,
     );
 
     await expect(service.suggest({ threadId: 'thread-1', model: 'claude-3' })).rejects.toThrow();
@@ -288,6 +445,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
+      null,
     );
 
     await expect(service.suggest({ threadId: 'thread-1' })).rejects.toThrow(
@@ -307,6 +465,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
+      null,
     );
 
     await expect(service.suggest({ threadId: 'thread-1' })).rejects.toThrow();
@@ -323,6 +482,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
+      null,
     );
 
     await service.suggest({ threadId: 'thread-1', instruction: 'Be formal' });
@@ -346,6 +506,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
+      null,
     );
 
     const result = await service.suggest({ leadId: 'l-1' });
@@ -369,141 +530,40 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
+      null,
     );
 
     await expect(service.suggest({})).rejects.toThrow('Either threadId or leadId is required');
   });
 
-  it('appends Pokelo snippets to the system message when context service is present', async () => {
+  it('appends knowledge snippets to the system message when a provider is present', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({ choices: [{ message: { content: 'Draft' } }] }),
     });
 
-    const pokelo = {
-      fetchContext: jest.fn().mockResolvedValue('--- Kontekst z Pokelo ---\nPricing is X'),
-      listBoundProjects: jest.fn().mockResolvedValue([{ id: 'p1', name: 'CRM' }]),
+    const knowledge = {
+      fetchContext: jest.fn().mockResolvedValue('Pricing is X'),
     };
     const settings = makeSettingsService();
     const service = new AiComposeSuggestService(
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      pokelo as any,
+      knowledge as any,
     );
 
     await service.suggest({ threadId: 'thread-1', leadId: 'l-1', instruction: 'Be brief' });
 
-    expect(pokelo.fetchContext).toHaveBeenCalledWith(expect.any(String), {
-      projectIds: ['p1'],
-    });
+    expect(knowledge.fetchContext).toHaveBeenCalledTimes(1);
+    expect(knowledge.fetchContext).toHaveBeenCalledWith(expect.any(String));
+    expect(knowledge.fetchContext.mock.calls[0][1]).toBeUndefined();
     const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     const systemMsg = body.messages.find((m: { role: string }) => m.role === 'system');
-    expect(systemMsg.content).toContain('Kontekst z Pokelo');
     expect(systemMsg.content).toContain('Pricing is X');
   });
 
-  it('routes across multiple Pokelo projects then fetches follow-up', async () => {
-    (global.fetch as jest.Mock).mockImplementation(async (_url: string, init: { body: string }) => {
-      const body = JSON.parse(init.body);
-      const system = body.messages?.[0]?.content ?? '';
-      if (typeof system === 'string' && system.includes('route knowledge-base')) {
-        // Router payload must match draft call (no max_tokens / no temperature:0)
-        expect(body.max_tokens).toBeUndefined();
-        expect(body.temperature).toBe(0.7);
-        return {
-          ok: true,
-          json: async () => ({
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    primary: ['crm'],
-                    followUp: ['finsly'],
-                  }),
-                },
-              },
-            ],
-          }),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({ choices: [{ message: { content: 'Draft' } }] }),
-      };
-    });
-
-    const pokelo = {
-      listBoundProjects: jest.fn().mockResolvedValue([
-        { id: 'crm', name: 'Bearly CRM' },
-        { id: 'finsly', name: 'Finsly' },
-        { id: 'pokelo', name: 'Pokelo' },
-      ]),
-      fetchContext: jest
-        .fn()
-        .mockResolvedValueOnce('--- Kontekst z Pokelo ---\n[Bearly CRM] CRM facts')
-        .mockResolvedValueOnce('--- Kontekst z Pokelo ---\n[Finsly] Billing facts'),
-    };
-
-    const service = new AiComposeSuggestService(
-      makeSettingsService() as any,
-      mockMailThreads as any,
-      mockLeads as any,
-      pokelo as any,
-    );
-
-    await service.suggest({ threadId: 'thread-1', instruction: 'Mention Finsly pricing' });
-
-    expect(pokelo.fetchContext).toHaveBeenNthCalledWith(1, expect.any(String), {
-      projectIds: ['crm'],
-    });
-    expect(pokelo.fetchContext).toHaveBeenNthCalledWith(2, expect.any(String), {
-      projectIds: ['finsly'],
-    });
-
-    const composeCall = (global.fetch as jest.Mock).mock.calls.find((c) => {
-      const body = JSON.parse(c[1].body);
-      return !String(body.messages?.[0]?.content ?? '').includes('route knowledge-base');
-    });
-    const systemMsg = JSON.parse(composeCall[1].body).messages.find(
-      (m: { role: string }) => m.role === 'system',
-    );
-    expect(systemMsg.content).toContain('CRM facts');
-    expect(systemMsg.content).toContain('Billing facts');
-  });
-
-  it('searches both projects directly when exactly two are bound (no router)', async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: 'Draft' } }] }),
-    });
-
-    const pokelo = {
-      listBoundProjects: jest.fn().mockResolvedValue([
-        { id: 'crm', name: 'Bearly CRM' },
-        { id: 'finsly', name: 'Finsly' },
-      ]),
-      fetchContext: jest.fn().mockResolvedValue('--- Kontekst z Pokelo ---\n[CRM] a\n[Finsly] b'),
-    };
-
-    const service = new AiComposeSuggestService(
-      makeSettingsService() as any,
-      mockMailThreads as any,
-      mockLeads as any,
-      pokelo as any,
-    );
-
-    await service.suggest({ threadId: 'thread-1', instruction: 'Hello' });
-
-    expect(pokelo.fetchContext).toHaveBeenCalledTimes(1);
-    expect(pokelo.fetchContext).toHaveBeenCalledWith(expect.any(String), {
-      projectIds: ['crm', 'finsly'],
-    });
-    // Only the compose completion — no router call
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('works without Pokelo when context service is null', async () => {
+  it('works without a knowledge provider', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({ choices: [{ message: { content: 'Draft' } }] }),
@@ -520,7 +580,7 @@ describe('AiComposeSuggestService', () => {
     await service.suggest({ threadId: 'thread-1' });
     const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     const systemMsg = body.messages.find((m: { role: string }) => m.role === 'system');
-    expect(systemMsg.content).not.toContain('Kontekst z Pokelo');
+    expect(systemMsg.content).not.toContain('Pricing is X');
   });
 });
 
@@ -538,7 +598,12 @@ describe('AiComposeSuggestService.generateNewsletter', () => {
   });
 
   function service(settings = makeSettingsService()) {
-    return new AiComposeSuggestService(settings as any, mockMailThreads as any, mockLeads as any);
+    return new AiComposeSuggestService(
+      settings as any,
+      mockMailThreads as any,
+      mockLeads as any,
+      null,
+    );
   }
 
   it('asks the model for HTML and strips fences', async () => {
@@ -626,21 +691,20 @@ describe('AiComposeSuggestService.generateNewsletter', () => {
     expect(userMsg.content).toContain('## Old draft');
   });
 
-  it('appends Pokelo snippets for newsletter generate', async () => {
+  it('appends knowledge snippets for newsletter generate', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({ choices: [{ message: { content: '<p>Hi</p>' } }] }),
     });
 
-    const pokelo = {
-      fetchContext: jest.fn().mockResolvedValue('--- Kontekst z Pokelo ---\nBrand voice: warm'),
-      listBoundProjects: jest.fn().mockResolvedValue([{ id: 'p1', name: 'CRM' }]),
+    const knowledge = {
+      fetchContext: jest.fn().mockResolvedValue('Brand voice: warm'),
     };
     const svc = new AiComposeSuggestService(
       makeSettingsService() as any,
       mockMailThreads as any,
       mockLeads as any,
-      pokelo as any,
+      knowledge as any,
     );
 
     await svc.generateNewsletter({
@@ -650,34 +714,10 @@ describe('AiComposeSuggestService.generateNewsletter', () => {
       instruction: 'Product news',
     });
 
-    expect(pokelo.fetchContext).toHaveBeenCalledWith(expect.stringContaining('Product news'), {
-      projectIds: ['p1'],
-    });
+    expect(knowledge.fetchContext).toHaveBeenCalledWith(expect.stringContaining('Product news'));
     const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     const systemMsg = body.messages.find((m: { role: string }) => m.role === 'system');
     expect(systemMsg.content).toContain('Brand voice: warm');
-  });
-});
-
-describe('parsePokeloRoute', () => {
-  it('extracts primary and followUp IDs from JSON', () => {
-    const route = parsePokeloRoute('Here you go:\n{"primary":["a","b"],"followUp":["c"]}\n', [
-      'a',
-      'b',
-      'c',
-      'd',
-    ]);
-    expect(route).toEqual({ primary: ['a', 'b'], followUp: ['c'] });
-  });
-
-  it('drops unknown IDs and caps lengths', () => {
-    const route = parsePokeloRoute('{"primary":["a","b","x","y"],"followUp":["c","d"]}', [
-      'a',
-      'b',
-      'c',
-    ]);
-    expect(route.primary).toEqual(['a', 'b']);
-    expect(route.followUp).toEqual(['c']);
   });
 });
 
@@ -692,7 +732,7 @@ describe('stripCodeFences', () => {
 });
 
 describe('AiComposeLlmService', () => {
-  it('returns null when no default model is set', async () => {
+  it('throws when no default model is set', async () => {
     const settings = {
       assertPluginEnabled: jest.fn().mockResolvedValue(undefined),
       getDecryptedApiKey: jest.fn().mockResolvedValue({
@@ -700,10 +740,11 @@ describe('AiComposeLlmService', () => {
         baseUrl: 'https://api.openai.com/v1',
       }),
       getDefaultModel: jest.fn().mockResolvedValue(null),
+      getReasoningEffort: jest.fn().mockResolvedValue(null),
     } as unknown as AiComposeSettingsService;
 
-    const svc = new AiComposeLlmService(settings);
-    await expect(svc.getCompletionConfig()).resolves.toBeNull();
+    const svc = new AiComposeLlmService(settings, { reasoningSupportFor: jest.fn() } as any);
+    await expect(svc.getCompletionConfig()).rejects.toThrow(/No default model configured/);
   });
 
   it('returns BYOK config when settings are complete', async () => {
@@ -714,13 +755,25 @@ describe('AiComposeLlmService', () => {
         baseUrl: 'https://api.openai.com/v1',
       }),
       getDefaultModel: jest.fn().mockResolvedValue('gpt-4o-mini'),
+      getReasoningEffort: jest.fn().mockResolvedValue('medium'),
     } as unknown as AiComposeSettingsService;
+    const suggest = {
+      cachedReasoningSupport: jest.fn().mockReturnValue(true),
+      reasoningSupportFor: jest.fn(),
+    };
 
-    const svc = new AiComposeLlmService(settings);
+    const svc = new AiComposeLlmService(settings, suggest as any);
     await expect(svc.getCompletionConfig()).resolves.toEqual({
       apiKey: 'sk-test',
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-4o-mini',
+      reasoningEffort: 'medium',
+      reasoningSupported: true,
     });
+    expect(suggest.cachedReasoningSupport).toHaveBeenCalledWith(
+      'https://api.openai.com/v1',
+      'gpt-4o-mini',
+    );
+    expect(suggest.reasoningSupportFor).not.toHaveBeenCalled();
   });
 });

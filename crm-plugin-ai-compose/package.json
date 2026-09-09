@@ -1,6 +1,6 @@
 {
   "name": "@khirby/plugin-ai-compose",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Khirby — AI-powered reply draft suggestions (BYOK, OpenAI-compatible)",
   "main": "src/index.ts",
   "keywords": [

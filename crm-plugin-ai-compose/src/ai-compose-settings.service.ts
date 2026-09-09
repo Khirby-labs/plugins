@@ -6,6 +6,8 @@ import {
   PLUGIN_REGISTRY,
   type PluginRegistryLike,
   AppException,
+  isReasoningEffort,
+  type ReasoningEffort,
 } from '../../../packages/plugin-host/src';
 import { aiComposeSettings } from './schema';
 import { encrypt, decrypt, isAiComposeSecretsKeyConfigured } from './ai-compose-crypto';
@@ -17,6 +19,7 @@ export type AiComposeSettingsPublic = {
   defaultModel: string | null;
   allowedModels: string[];
   systemPrompt: string | null;
+  reasoningEffort: ReasoningEffort | null;
   apiKeyConfigured: boolean;
 };
 
@@ -49,6 +52,7 @@ export class AiComposeSettingsService {
       defaultModel: row?.defaultModel ?? null,
       allowedModels: row?.allowedModels ?? [],
       systemPrompt: row?.systemPrompt ?? null,
+      reasoningEffort: isReasoningEffort(row?.reasoningEffort) ? row.reasoningEffort : null,
       apiKeyConfigured: !!row?.apiKeyEnc,
     };
   }
@@ -59,6 +63,7 @@ export class AiComposeSettingsService {
     defaultModel?: string | null;
     allowedModels?: string[];
     systemPrompt?: string | null;
+    reasoningEffort?: ReasoningEffort | null;
   }): Promise<AiComposeSettingsPublic> {
     await this.assertPluginEnabled();
 
@@ -67,7 +72,7 @@ export class AiComposeSettingsService {
     let apiKeyEnc: string | undefined = undefined;
     if (dto.apiKey !== undefined && dto.apiKey.trim()) {
       if (!isAiComposeSecretsKeyConfigured()) {
-        throw AppException.badRequest('AI_COMPOSE_SECRETS_KEY is not configured');
+        throw AppException.badRequest('KHIRBY_SECRETS_KEY is not configured');
       }
       apiKeyEnc = encrypt(dto.apiKey.trim());
     }
@@ -83,6 +88,14 @@ export class AiComposeSettingsService {
       );
     }
 
+    if (
+      dto.reasoningEffort !== undefined &&
+      dto.reasoningEffort !== null &&
+      !isReasoningEffort(dto.reasoningEffort)
+    ) {
+      throw AppException.badRequest('reasoningEffort must be none, low, medium, or high');
+    }
+
     const patch: Record<string, unknown> = {
       baseUrl,
       defaultModel:
@@ -90,6 +103,12 @@ export class AiComposeSettingsService {
       allowedModels: dto.allowedModels ?? existing?.allowedModels ?? [],
       systemPrompt:
         dto.systemPrompt !== undefined ? dto.systemPrompt : (existing?.systemPrompt ?? null),
+      reasoningEffort:
+        dto.reasoningEffort !== undefined
+          ? dto.reasoningEffort
+          : isReasoningEffort(existing?.reasoningEffort)
+            ? existing.reasoningEffort
+            : null,
       updatedAt: new Date(),
     };
 
@@ -110,16 +129,26 @@ export class AiComposeSettingsService {
     return this.getSettings();
   }
 
-  /** Decrypt the stored API key for internal use; throws if missing. */
+  /** Decrypt the stored API key for internal use; throws if missing or unreadable. */
   async getDecryptedApiKey(): Promise<{ apiKey: string; baseUrl: string }> {
     const row = await this.getRow();
     if (!row?.apiKeyEnc) {
-      throw AppException.badRequest('AI Compose API key is not configured');
+      throw AppException.pluginNotConfigured('ai-compose', 'AI Compose API key is not configured');
     }
-    return {
-      apiKey: decrypt(row.apiKeyEnc),
-      baseUrl: row.baseUrl,
-    };
+    try {
+      return {
+        apiKey: decrypt(row.apiKeyEnc),
+        baseUrl: row.baseUrl,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Failed to decrypt AI Compose API key: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
+      throw AppException.pluginNotConfigured(
+        'ai-compose',
+        'AI Compose API key cannot be decrypted',
+      );
+    }
   }
 
   async getAllowedModels(): Promise<string[]> {
@@ -135,5 +164,10 @@ export class AiComposeSettingsService {
   async getSystemPrompt(): Promise<string | null> {
     const row = await this.getRow();
     return row?.systemPrompt ?? null;
+  }
+
+  async getReasoningEffort(): Promise<ReasoningEffort | null> {
+    const row = await this.getRow();
+    return isReasoningEffort(row?.reasoningEffort) ? row.reasoningEffort : null;
   }
 }

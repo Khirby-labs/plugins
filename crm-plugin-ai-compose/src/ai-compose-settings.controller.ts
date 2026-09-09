@@ -6,7 +6,6 @@ import {
   RequirePermission,
   RequirePluginEnabled,
   PluginEnabledGuard,
-  AppException,
 } from '../../../packages/plugin-host/src';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
 import { AiComposeSuggestService } from './ai-compose-suggest.service';
@@ -39,6 +38,7 @@ export class AiComposeSettingsController {
       defaultModel?: string | null;
       allowedModels?: string[];
       systemPrompt?: string | null;
+      reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | null;
     },
   ) {
     return this.settings.updateSettings(dto);
@@ -47,9 +47,7 @@ export class AiComposeSettingsController {
   @Get('models')
   @ApiOperation({ summary: 'Fetch available models from the configured AI provider' })
   async getModels() {
-    const { apiKey, baseUrl } = await this.settings.getDecryptedApiKey().catch(() => {
-      throw AppException.badRequest('API key is not configured. Save your settings first.');
-    });
+    const { apiKey, baseUrl } = await this.settings.getDecryptedApiKey();
     return this.suggest.fetchModels(baseUrl, apiKey);
   }
 

@@ -12,5 +12,7 @@ CREATE TABLE IF NOT EXISTS ai_compose_settings (
   system_prompt TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)
+);
+
+ALTER TABLE ai_compose_settings ADD COLUMN IF NOT EXISTS reasoning_effort TEXT
 `;

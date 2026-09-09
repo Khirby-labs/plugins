@@ -2,10 +2,13 @@ import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import {
   LEADS_SERVICE,
   MAIL_THREAD_SERVICE,
-  POKELO_CONTEXT_SERVICE,
+  KNOWLEDGE_CONTEXT,
   type MailThreadServiceLike,
-  type PokeloContextServiceLike,
+  type KnowledgeContextLike,
   AppException,
+  applyReasoningEffort,
+  isReasoningEffort,
+  parseModelReasoningSupport,
 } from '../../../packages/plugin-host/src';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
 
@@ -33,14 +36,17 @@ export type LeadsServiceLike = {
 @Injectable()
 export class AiComposeSuggestService {
   private readonly logger = new Logger(AiComposeSuggestService.name);
+  /** Advertised (or learned from a 400) reasoning support, keyed by baseUrl + model id. */
+  private readonly reasoningByModel = new Map<string, boolean>();
+  private readonly catalogFetched = new Set<string>();
 
   constructor(
     private readonly settings: AiComposeSettingsService,
     @Inject(MAIL_THREAD_SERVICE) private readonly mailThreads: MailThreadServiceLike,
     @Inject(LEADS_SERVICE) private readonly leads: LeadsServiceLike,
     @Optional()
-    @Inject(POKELO_CONTEXT_SERVICE)
-    private readonly pokeloContext: PokeloContextServiceLike | null = null,
+    @Inject(KNOWLEDGE_CONTEXT)
+    private readonly knowledge: KnowledgeContextLike | null,
   ) {}
 
   async availability(): Promise<{ available: boolean; defaultModel: string | null }> {
@@ -218,7 +224,10 @@ export class AiComposeSuggestService {
     return { draft, modelUsed };
   }
 
-  async fetchModels(baseUrl: string, apiKey: string): Promise<{ id: string; label: string }[]> {
+  async fetchModels(
+    baseUrl: string,
+    apiKey: string,
+  ): Promise<{ id: string; label: string; supportsReasoning: boolean | null }[]> {
     const response = await fetch(`${baseUrl}/models`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
@@ -231,12 +240,40 @@ export class AiComposeSuggestService {
     }
 
     const data = (await response.json()) as {
-      data?: Array<{ id: string; object?: string }>;
+      data?: Array<Record<string, unknown> & { id?: string; object?: string }>;
     };
 
+    this.catalogFetched.add(this.originKey(baseUrl));
+
     return (data?.data ?? [])
-      .filter((m) => m.object === 'model' || !m.object)
-      .map((m) => ({ id: m.id, label: m.id }));
+      .filter((m) => typeof m.id === 'string' && (m.object === 'model' || !m.object))
+      .map((m) => {
+        const id = String(m.id);
+        const support = parseModelReasoningSupport(m);
+        if (support !== undefined) {
+          this.reasoningByModel.set(this.supportKey(baseUrl, id), support);
+        }
+        return { id, label: id, supportsReasoning: support ?? null };
+      });
+  }
+
+  async reasoningSupportFor(
+    baseUrl: string,
+    apiKey: string,
+    model: string,
+  ): Promise<boolean | undefined> {
+    const key = this.supportKey(baseUrl, model);
+    const cached = this.reasoningByModel.get(key);
+    if (cached !== undefined) return cached;
+    if (!this.catalogFetched.has(this.originKey(baseUrl))) {
+      await this.fetchModels(baseUrl, apiKey).catch(() => undefined);
+    }
+    return this.reasoningByModel.get(key);
+  }
+
+  /** In-memory only — Ask Khirby must not block SSE on GET /models. */
+  cachedReasoningSupport(baseUrl: string, model: string): boolean | undefined {
+    return this.reasoningByModel.get(this.supportKey(baseUrl, model));
   }
 
   /** Allowed models for compose UIs that are not integrations admins. */
@@ -304,34 +341,52 @@ export class AiComposeSuggestService {
   }): Promise<string> {
     const { apiKey, baseUrl } = await this.settings.getDecryptedApiKey();
 
-    let pokeloSnippets = '';
-    if (this.pokeloContext) {
-      const query = (input.ragQuery ?? input.userContent).slice(0, 800);
-      pokeloSnippets = await this.resolvePokeloSnippets({
-        query,
-        apiKey,
-        baseUrl,
-        modelUsed: input.modelUsed,
-      }).catch(() => '');
-    }
+    const knowledgeQuery = (input.ragQuery ?? input.userContent).slice(0, 800);
+    const knowledgeSnippets = this.knowledge
+      ? await this.knowledge.fetchContext(knowledgeQuery).catch(() => '')
+      : '';
 
-    const systemContent = [input.systemContent, pokeloSnippets].filter(Boolean).join('\n\n');
+    const systemContent = [input.systemContent, knowledgeSnippets].filter(Boolean).join('\n\n');
+    const reasoningEffort = await this.settings.getReasoningEffort();
+    const supportsReasoning = isReasoningEffort(reasoningEffort)
+      ? await this.reasoningSupportFor(baseUrl, apiKey, input.modelUsed)
+      : undefined;
+    const payload: Record<string, unknown> = {
+      model: input.modelUsed,
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: input.userContent },
+      ],
+      temperature: 0.7,
+    };
+    const attempted = applyReasoningEffort(payload, reasoningEffort, supportsReasoning);
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    let response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: input.modelUsed,
-        messages: [
-          { role: 'system', content: systemContent },
-          { role: 'user', content: input.userContent },
-        ],
-        temperature: 0.7,
-      }),
+      body: JSON.stringify(attempted),
     });
+
+    if (
+      !response.ok &&
+      attempted.reasoning_effort &&
+      (response.status === 400 || response.status === 422)
+    ) {
+      this.reasoningByModel.set(this.supportKey(baseUrl, input.modelUsed), false);
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    } else if (response.ok && attempted.reasoning_effort) {
+      this.reasoningByModel.set(this.supportKey(baseUrl, input.modelUsed), true);
+    }
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'unknown error');
@@ -352,162 +407,12 @@ export class AiComposeSuggestService {
     return draft;
   }
 
-  /**
-   * Multi-project Pokelo RAG (ADR-0022):
-   * - 0 bound → ''
-   * - 1–2 bound → direct search (no extra LLM round-trip)
-   * - 3+ → cheap router LLM picks primary (+ optional followUp), then search
-   */
-  private async resolvePokeloSnippets(input: {
-    query: string;
-    apiKey: string;
-    baseUrl: string;
-    modelUsed: string;
-  }): Promise<string> {
-    if (!this.pokeloContext) return '';
-
-    const bound = (await this.pokeloContext.listBoundProjects?.().catch(() => [])) ?? [];
-    if (bound.length === 0) {
-      return this.pokeloContext.fetchContext(input.query).catch(() => '');
-    }
-
-    // One or two projects: search them all — router adds latency/cost for little gain
-    // and some providers reject the router's stricter completion params (HTTP 400).
-    if (bound.length <= 2) {
-      return this.pokeloContext.fetchContext(input.query, {
-        projectIds: bound.map((p) => p.id),
-      });
-    }
-
-    const route = await this.routePokeloProjects({
-      query: input.query,
-      projects: bound,
-      apiKey: input.apiKey,
-      baseUrl: input.baseUrl,
-      modelUsed: input.modelUsed,
-    });
-
-    const primaryIds = route.primary.length > 0 ? route.primary : [bound[0].id];
-    let snippets = await this.pokeloContext.fetchContext(input.query, {
-      projectIds: primaryIds,
-    });
-
-    // Second pass: also pull from another brand/project when the router asked for it.
-    const followUp = route.followUp.filter((id) => !primaryIds.includes(id));
-    if (followUp.length > 0) {
-      const more = await this.pokeloContext.fetchContext(input.query, {
-        projectIds: followUp,
-      });
-      if (more) {
-        snippets = [snippets, more].filter(Boolean).join('\n\n');
-      }
-    }
-
-    return snippets;
+  private originKey(baseUrl: string): string {
+    return baseUrl.replace(/\/$/, '');
   }
 
-  private async routePokeloProjects(input: {
-    query: string;
-    projects: Array<{ id: string; name: string }>;
-    apiKey: string;
-    baseUrl: string;
-    modelUsed: string;
-  }): Promise<{ primary: string[]; followUp: string[] }> {
-    const catalog = input.projects.map((p) => `- ${p.name} (${p.id})`).join('\n');
-
-    const system = [
-      'You route knowledge-base lookups for a CRM AI assistant.',
-      'Given a drafting query and available Pokelo projects (brands/products),',
-      'choose which projects to search.',
-      'Return ONLY compact JSON: {"primary":["uuid",...],"followUp":["uuid",...]}',
-      'Rules:',
-      '- primary: 1–2 most relevant projects to search first',
-      '- followUp: 0–1 extra project if a second brand/product may add useful context',
-      '- use only IDs from the catalog',
-      '- if unsure, put the broadest/most central project in primary and leave followUp empty',
-    ].join(' ');
-
-    const user = [
-      'Available projects:',
-      catalog,
-      '',
-      'Drafting query:',
-      input.query.slice(0, 800),
-    ].join('\n');
-
-    try {
-      // Keep the body aligned with completeChat — many OpenAI-compatible providers
-      // reject max_tokens and/or temperature: 0 (HTTP 400) while accepting the draft call.
-      const response = await fetch(`${input.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${input.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: input.modelUsed,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: user },
-          ],
-          temperature: 0.7,
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        this.logger.warn(
-          `Pokelo router HTTP ${response.status} — falling back to all projects: ${errText.slice(0, 300)}`,
-        );
-        return {
-          primary: input.projects.slice(0, 2).map((p) => p.id),
-          followUp: input.projects.slice(2, 3).map((p) => p.id),
-        };
-      }
-
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const raw = data?.choices?.[0]?.message?.content ?? '';
-      return parsePokeloRoute(
-        raw,
-        input.projects.map((p) => p.id),
-      );
-    } catch (err) {
-      this.logger.warn(`Pokelo router failed: ${(err as Error).message}`);
-      return {
-        primary: input.projects.slice(0, 2).map((p) => p.id),
-        followUp: input.projects.slice(2, 3).map((p) => p.id),
-      };
-    }
-  }
-}
-
-/** Exported for unit tests. */
-export function parsePokeloRoute(
-  raw: string,
-  allowedIds: string[],
-): { primary: string[]; followUp: string[] } {
-  const allowed = new Set(allowedIds);
-  const empty = { primary: [] as string[], followUp: [] as string[] };
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return empty;
-  try {
-    const parsed = JSON.parse(jsonMatch[0]) as {
-      primary?: unknown;
-      followUp?: unknown;
-    };
-    const pick = (v: unknown, max: number) =>
-      (Array.isArray(v) ? v : [])
-        .filter((id): id is string => typeof id === 'string' && allowed.has(id))
-        .filter((id, i, arr) => arr.indexOf(id) === i)
-        .slice(0, max);
-    return {
-      primary: pick(parsed.primary, 2),
-      followUp: pick(parsed.followUp, 1),
-    };
-  } catch {
-    return empty;
+  private supportKey(baseUrl: string, model: string): string {
+    return `${this.originKey(baseUrl)}\0${model}`;
   }
 }
 

@@ -7,6 +7,7 @@ export const aiComposeSettings = pgTable('ai_compose_settings', {
   defaultModel: text('default_model'),
   allowedModels: text('allowed_models').array().notNull().default([]),
   systemPrompt: text('system_prompt'),
+  reasoningEffort: text('reasoning_effort'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
