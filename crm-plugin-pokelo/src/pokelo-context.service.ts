@@ -1,26 +1,36 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { KnowledgeContextLike, PokeloFetchOpts } from '../../../packages/plugin-host/src';
+import type {
+  KnowledgeContextLike,
+  KnowledgeFetchOpts,
+  KnowledgeMcpToolDef,
+  KnowledgeToolsLike,
+} from '../../../packages/plugin-host/src';
 import { PokeloSettingsService } from './pokelo-settings.service';
+import {
+  callMcpTool,
+  extractProjectIdArg,
+  listMcpTools,
+  parseProjectList,
+  parseSearchMatches,
+} from './pokelo-mcp.client';
 
 const SNIPPET_LIMIT_TOTAL = 8;
 const SNIPPET_LIMIT_PER_PROJECT = 3;
 const SNIPPET_MAX_CHARS = 800;
+const TOOL_RESULT_MAX = 12_000;
+const TOOLS_CACHE_TTL_MS = 5 * 60_000;
 
-type McpToolResult = {
-  result?: {
-    content?: Array<{ type?: string; text?: string }>;
-    isError?: boolean;
-  };
-  error?: { message?: string };
-};
+/** Account-level create would bypass Settings binding (ADR-0050). */
+const BLOCKED_MCP_TOOLS = new Set(['create_project']);
 
 @Injectable()
-export class PokeloContextService implements KnowledgeContextLike {
+export class PokeloContextService implements KnowledgeContextLike, KnowledgeToolsLike {
   private readonly logger = new Logger(PokeloContextService.name);
+  private toolsCache: { at: number; tools: KnowledgeMcpToolDef[] } | null = null;
 
   constructor(private readonly settings: PokeloSettingsService) {}
 
-  async fetchContext(query: string, opts?: PokeloFetchOpts): Promise<string> {
+  async fetchContext(query: string, opts?: KnowledgeFetchOpts): Promise<string> {
     try {
       if (!(await this.settings.isPluginEnabled())) {
         return '';
@@ -54,7 +64,7 @@ export class PokeloContextService implements KnowledgeContextLike {
       const settled = await Promise.all(
         targetIds.map(async (projectId) => {
           try {
-            const text = await this.callMcpTool(creds.baseUrl, creds.token, 'search_documents', {
+            const text = await callMcpTool(creds.baseUrl, creds.token, 'search_documents', {
               projectId,
               query: trimmed.slice(0, 4000),
               limit: perProjectLimit,
@@ -99,13 +109,88 @@ export class PokeloContextService implements KnowledgeContextLike {
     }
   }
 
+  async listTools(): Promise<KnowledgeMcpToolDef[]> {
+    if (!(await this.settings.isPluginEnabled())) {
+      return [];
+    }
+    const creds = await this.settings.getCredentials();
+    if (!creds?.token || creds.projectIds.length === 0) {
+      return [];
+    }
+
+    const now = Date.now();
+    if (this.toolsCache && now - this.toolsCache.at < TOOLS_CACHE_TTL_MS) {
+      return this.toolsCache.tools;
+    }
+
+    const tools = (await listMcpTools(creds.baseUrl, creds.token)).filter(
+      (t) => !BLOCKED_MCP_TOOLS.has(t.name),
+    );
+    this.toolsCache = { at: now, tools };
+    return tools;
+  }
+
+  async callTool(name: string, args: Record<string, unknown>): Promise<string> {
+    if (!(await this.settings.isPluginEnabled())) {
+      throw new Error('Pokelo plugin is disabled');
+    }
+    if (BLOCKED_MCP_TOOLS.has(name)) {
+      throw new Error(
+        `${name} is not available from Ask Khirby — bind projects in Settings → Integrations → Pokelo`,
+      );
+    }
+
+    const creds = await this.settings.getCredentials();
+    if (!creds?.token) {
+      throw new Error('Pokelo token is not configured');
+    }
+    if (creds.projectIds.length === 0) {
+      throw new Error(
+        'No Pokelo projects bound — select projects in Settings → Integrations → Pokelo',
+      );
+    }
+
+    const projectId = extractProjectIdArg(args);
+    if (projectId && !creds.projectIds.includes(projectId)) {
+      throw new Error(`Project ${projectId} is not in the operator-bound Pokelo set`);
+    }
+
+    if (name === 'list_projects') {
+      const text = await callMcpTool(creds.baseUrl, creds.token, 'list_projects', {
+        ...args,
+        limit: typeof args.limit === 'number' ? args.limit : 100,
+      });
+      const all = parseProjectList(text);
+      const bound = new Set(creds.projectIds);
+      const filtered = all.filter((p) => bound.has(p.id));
+      const seen = new Set(filtered.map((p) => p.id));
+      for (const id of creds.projectIds) {
+        if (!seen.has(id)) filtered.push({ id, name: id });
+      }
+      const payload = JSON.stringify({
+        items: filtered.map((p) => ({ projectId: p.id, name: p.name })),
+        total: filtered.length,
+      });
+      return truncateToolResult(payload);
+    }
+
+    if (!projectId) {
+      throw new Error(
+        `projectId is required and must be one of the bound Pokelo projects (${creds.projectIds.join(', ')})`,
+      );
+    }
+
+    const text = await callMcpTool(creds.baseUrl, creds.token, name, args);
+    return truncateToolResult(text);
+  }
+
   async listProjects(): Promise<Array<{ id: string; name: string }>> {
     const creds = await this.settings.getCredentials();
     if (!creds?.token) {
       return [];
     }
 
-    const text = await this.callMcpTool(creds.baseUrl, creds.token, 'list_projects', {
+    const text = await callMcpTool(creds.baseUrl, creds.token, 'list_projects', {
       limit: 100,
     });
 
@@ -129,7 +214,7 @@ export class PokeloContextService implements KnowledgeContextLike {
   ): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     try {
-      const text = await this.callMcpTool(baseUrl, token, 'list_projects', { limit: 100 });
+      const text = await callMcpTool(baseUrl, token, 'list_projects', { limit: 100 });
       for (const p of parseProjectList(text)) {
         map.set(p.id, p.name);
       }
@@ -141,110 +226,17 @@ export class PokeloContextService implements KnowledgeContextLike {
     }
     return map;
   }
-
-  private async callMcpTool(
-    baseUrl: string,
-    token: string,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<string> {
-    const url = `${baseUrl.replace(/\/$/, '')}/mcp`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: { name, arguments: args },
-      }),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => 'unknown error');
-      throw new Error(`Pokelo MCP ${response.status}: ${errText.slice(0, 200)}`);
-    }
-
-    const contentType = response.headers.get('content-type') ?? '';
-    const raw = await response.text();
-    const envelope = contentType.includes('text/event-stream')
-      ? parseSseJsonRpc(raw)
-      : (JSON.parse(raw) as McpToolResult);
-
-    if (envelope.error) {
-      throw new Error(envelope.error.message ?? 'Pokelo MCP tool error');
-    }
-    // Pokelo maps tool failures to CallToolResult.isError (HTTP 200), not JSON-RPC error.
-    if (envelope.result?.isError) {
-      const msg = envelope.result.content?.[0]?.text?.trim() || 'Pokelo MCP tool error';
-      throw new Error(msg);
-    }
-
-    return envelope.result?.content?.[0]?.text ?? '';
-  }
 }
 
-/** Parse last JSON-RPC payload from an SSE body (`data: {...}` lines). */
-export function parseSseJsonRpc(raw: string): McpToolResult {
-  const dataLines: string[] = [];
-  for (const line of raw.split(/\r?\n/)) {
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trim());
-    }
-  }
-  if (dataLines.length === 0) {
-    return JSON.parse(raw) as McpToolResult;
-  }
-  for (let i = dataLines.length - 1; i >= 0; i--) {
-    if (dataLines[i] && dataLines[i] !== '[DONE]') {
-      return JSON.parse(dataLines[i]) as McpToolResult;
-    }
-  }
-  throw new Error('Empty SSE response from Pokelo MCP');
+function truncateToolResult(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= TOOL_RESULT_MAX) return trimmed;
+  return `${trimmed.slice(0, TOOL_RESULT_MAX)}…`;
 }
 
-export function parseSearchMatches(text: string): string[] {
-  if (!text.trim()) return [];
-  try {
-    const parsed = JSON.parse(text) as {
-      matches?: Array<{ content?: string }>;
-      matchCount?: number;
-    };
-    if (Array.isArray(parsed.matches)) {
-      return parsed.matches
-        .map((m) => (typeof m.content === 'string' ? m.content : ''))
-        .filter(Boolean);
-    }
-  } catch {
-    // fall through
-  }
-  return [text];
-}
-
-export function parseProjectList(text: string): Array<{ id: string; name: string }> {
-  if (!text.trim()) return [];
-  try {
-    const parsed = JSON.parse(text) as {
-      items?: Array<{ id?: string; projectId?: string; name?: string }>;
-    };
-    if (Array.isArray(parsed.items)) {
-      return parsed.items
-        .map((p) => {
-          const id =
-            (typeof p.projectId === 'string' && p.projectId.trim()) ||
-            (typeof p.id === 'string' && p.id.trim()) ||
-            '';
-          const name = typeof p.name === 'string' ? p.name.trim() : '';
-          return { id, name };
-        })
-        .filter((p) => p.id && p.name);
-    }
-  } catch {
-    // ignore
-  }
-  return [];
-}
+// Re-export parsers for existing specs
+export {
+  parseSseJsonRpc,
+  parseSearchMatches,
+  parseProjectList,
+} from './pokelo-mcp.client';

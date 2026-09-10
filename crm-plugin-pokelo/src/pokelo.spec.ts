@@ -377,3 +377,99 @@ describe('PokeloContextService.fetchContext', () => {
     expect(await ctx.fetchContext('pricing')).toBe('');
   });
 });
+
+describe('PokeloContextService listTools / callTool', () => {
+  const HEX_KEY = 'f'.repeat(64);
+
+  beforeEach(() => {
+    process.env.POKELO_SECRETS_KEY = HEX_KEY;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    delete process.env.POKELO_SECRETS_KEY;
+    jest.restoreAllMocks();
+  });
+
+  function settingsWithProjects(ids: string[]) {
+    return new PokeloSettingsService(
+      makeMockDb({
+        encryptedToken: encrypt('mcp_tok'),
+        projectIds: ids,
+        projectId: ids[0],
+        baseUrl: 'https://rag.bearly.pro/v1',
+      }) as any,
+      makeMockRegistry(true) as any,
+    );
+  }
+
+  it('listTools drops create_project and caches the catalog', async () => {
+    const listPayload = {
+      jsonrpc: '2.0',
+      result: {
+        tools: [
+          { name: 'list_projects', description: 'List', inputSchema: { type: 'object' } },
+          { name: 'create_project', description: 'Create', inputSchema: { type: 'object' } },
+          {
+            name: 'search_documents',
+            description: 'Search',
+            inputSchema: { type: 'object', properties: { projectId: { type: 'string' } } },
+          },
+        ],
+      },
+    };
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      text: async () => JSON.stringify(listPayload),
+    });
+
+    const ctx = new PokeloContextService(settingsWithProjects(['a', 'b']));
+    const tools = await ctx.listTools();
+    expect(tools.map((t) => t.name)).toEqual(['list_projects', 'search_documents']);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await ctx.listTools();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('callTool rejects unbound projectId and filters list_projects to bound set', async () => {
+    const listPayload = {
+      jsonrpc: '2.0',
+      result: {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              items: [
+                { projectId: 'a', name: 'CRM' },
+                { projectId: 'b', name: 'Other' },
+                { projectId: 'c', name: 'Unbound' },
+              ],
+            }),
+          },
+        ],
+      },
+    };
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      text: async () => JSON.stringify(listPayload),
+    });
+
+    const ctx = new PokeloContextService(settingsWithProjects(['a', 'b']));
+    await expect(ctx.callTool('search_documents', { projectId: 'c', query: 'x' })).rejects.toThrow(
+      /not in the operator-bound/,
+    );
+
+    const listed = await ctx.callTool('list_projects', {});
+    const parsed = JSON.parse(listed) as { items: Array<{ projectId: string }> };
+    expect(parsed.items.map((i) => i.projectId).sort()).toEqual(['a', 'b']);
+  });
+
+  it('callTool blocks create_project', async () => {
+    const ctx = new PokeloContextService(settingsWithProjects(['a']));
+    await expect(ctx.callTool('create_project', { name: 'x' })).rejects.toThrow(/not available/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

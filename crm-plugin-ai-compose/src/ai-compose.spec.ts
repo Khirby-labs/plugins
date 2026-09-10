@@ -255,6 +255,13 @@ const MOCK_THREAD = {
   ],
 };
 
+
+function mockModuleRef(knowledge: unknown = null) {
+  return {
+    get: jest.fn().mockReturnValue(knowledge),
+  } as any;
+}
+
 describe('AiComposeSuggestService', () => {
   const mockMailThreads = {
     getThread: jest.fn().mockResolvedValue(MOCK_THREAD),
@@ -302,7 +309,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     const result = await service.suggest({ threadId: 'thread-1', leadId: 'l-1' });
@@ -333,7 +340,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
     await service.suggest({ threadId: 'thread-1' });
     const body = chatBodyFromFetch();
@@ -356,7 +363,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
     await service.suggest({ threadId: 'thread-1' });
     const body = chatBodyFromFetch();
@@ -387,7 +394,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
     await service.suggest({ threadId: 'thread-1' });
     expect(completions).toBe(2);
@@ -411,7 +418,7 @@ describe('AiComposeSuggestService', () => {
       makeSettingsService() as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
     await expect(
       service.fetchModels('https://api.openai.com/v1', 'sk-test'),
@@ -428,7 +435,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     await expect(service.suggest({ threadId: 'thread-1', model: 'claude-3' })).rejects.toThrow();
@@ -445,7 +452,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     await expect(service.suggest({ threadId: 'thread-1' })).rejects.toThrow(
@@ -465,7 +472,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     await expect(service.suggest({ threadId: 'thread-1' })).rejects.toThrow();
@@ -482,7 +489,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     await service.suggest({ threadId: 'thread-1', instruction: 'Be formal' });
@@ -506,7 +513,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     const result = await service.suggest({ leadId: 'l-1' });
@@ -530,7 +537,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     await expect(service.suggest({})).rejects.toThrow('Either threadId or leadId is required');
@@ -550,7 +557,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      knowledge as any,
+      mockModuleRef(knowledge),
     );
 
     await service.suggest({ threadId: 'thread-1', leadId: 'l-1', instruction: 'Be brief' });
@@ -574,7 +581,7 @@ describe('AiComposeSuggestService', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
 
     await service.suggest({ threadId: 'thread-1' });
@@ -602,7 +609,7 @@ describe('AiComposeSuggestService.generateNewsletter', () => {
       settings as any,
       mockMailThreads as any,
       mockLeads as any,
-      null,
+      mockModuleRef(),
     );
   }
 
@@ -704,7 +711,7 @@ describe('AiComposeSuggestService.generateNewsletter', () => {
       makeSettingsService() as any,
       mockMailThreads as any,
       mockLeads as any,
-      knowledge as any,
+      mockModuleRef(knowledge),
     );
 
     await svc.generateNewsletter({

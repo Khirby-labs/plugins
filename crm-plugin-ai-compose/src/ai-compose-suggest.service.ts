@@ -1,4 +1,5 @@
-import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   LEADS_SERVICE,
   MAIL_THREAD_SERVICE,
@@ -9,6 +10,7 @@ import {
   applyReasoningEffort,
   isReasoningEffort,
   parseModelReasoningSupport,
+  resolveLoadedProvider,
 } from '../../../packages/plugin-host/src';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
 
@@ -44,10 +46,13 @@ export class AiComposeSuggestService {
     private readonly settings: AiComposeSettingsService,
     @Inject(MAIL_THREAD_SERVICE) private readonly mailThreads: MailThreadServiceLike,
     @Inject(LEADS_SERVICE) private readonly leads: LeadsServiceLike,
-    @Optional()
-    @Inject(KNOWLEDGE_CONTEXT)
-    private readonly knowledge: KnowledgeContextLike | null,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** Volume Pokelo may bind after this service is constructed (ADR-0048 / ADR-0050). */
+  private knowledge(): KnowledgeContextLike | null {
+    return resolveLoadedProvider<KnowledgeContextLike>(this.moduleRef, KNOWLEDGE_CONTEXT);
+  }
 
   async availability(): Promise<{ available: boolean; defaultModel: string | null }> {
     const defaultModel = await this.settings.getDefaultModel();
@@ -342,8 +347,9 @@ export class AiComposeSuggestService {
     const { apiKey, baseUrl } = await this.settings.getDecryptedApiKey();
 
     const knowledgeQuery = (input.ragQuery ?? input.userContent).slice(0, 800);
-    const knowledgeSnippets = this.knowledge
-      ? await this.knowledge.fetchContext(knowledgeQuery).catch(() => '')
+    const knowledge = this.knowledge();
+    const knowledgeSnippets = knowledge
+      ? await knowledge.fetchContext(knowledgeQuery).catch(() => '')
       : '';
 
     const systemContent = [input.systemContent, knowledgeSnippets].filter(Boolean).join('\n\n');
