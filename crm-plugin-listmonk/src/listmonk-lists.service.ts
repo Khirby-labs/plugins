@@ -6,7 +6,7 @@ import {
   DB_TOKEN,
   Db,
   AppException,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { fetchRemoteLists } from './listmonk-client';
 import { ListmonkNotConfiguredError, ListmonkUpstreamError } from './listmonk-errors';
 import { lmListForms } from './listmonk-campaigns.schema';

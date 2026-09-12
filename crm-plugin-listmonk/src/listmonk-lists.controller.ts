@@ -5,7 +5,7 @@ import {
   SessionGuard,
   PermissionGuard,
   RequirePermission,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { ListmonkListsService } from './listmonk-lists.service';
 
 class SetListFormDto {

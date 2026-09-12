@@ -6,7 +6,7 @@
  * moment a message is reworded — let alone translated.
  */
 import type { HttpException } from '@nestjs/common';
-import { AppException } from '../../../packages/plugin-host/src';
+import { AppException } from '@khirby/plugin-host';
 
 /** Credentials or URL are missing from the plugin config — the operator can fix it. */
 export class ListmonkNotConfiguredError extends Error {

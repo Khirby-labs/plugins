@@ -28,7 +28,7 @@ import {
   SessionGuard,
   PermissionGuard,
   RequirePermission,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { ListmonkCampaignsService } from './listmonk-campaigns.service';
 
 class CreateCampaignDto {
