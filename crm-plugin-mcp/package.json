@@ -7,7 +7,7 @@
     "khirby-plugin"
   ],
   "peerDependencies": {
-    "@khirby/plugin-host": "^1.2.0",
+    "@khirby/plugin-host": "^1.0.0",
     "@khirby/plugin-sdk": "^1.0.0",
     "@modelcontextprotocol/node": "*",
     "@modelcontextprotocol/server": "*",
