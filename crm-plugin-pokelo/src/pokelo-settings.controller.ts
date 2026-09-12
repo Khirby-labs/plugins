@@ -7,7 +7,7 @@ import {
   RequirePluginEnabled,
   PluginEnabledGuard,
   AppException,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { PokeloSettingsService, POKELO_PLUGIN_NAME } from './pokelo-settings.service';
 import { PokeloContextService } from './pokelo-context.service';
 

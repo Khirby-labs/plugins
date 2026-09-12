@@ -1,13 +1,13 @@
 {
   "name": "@khirby/plugin-pokelo",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Khirby — Pokelo knowledge MCP proxy for Ask Khirby + RAG context for AI Compose",
   "main": "src/index.ts",
   "keywords": [
     "khirby-plugin"
   ],
   "peerDependencies": {
-    "@khirby/plugin-host": "^1.0.0",
+    "@khirby/plugin-host": "^1.2.0",
     "@khirby/plugin-sdk": "^1.0.0",
     "@nestjs/common": "*",
     "@nestjs/swagger": "*",
