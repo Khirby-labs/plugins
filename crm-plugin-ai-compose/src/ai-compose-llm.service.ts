@@ -3,7 +3,7 @@ import {
   AppException,
   isReasoningEffort,
   type AiComposeLlmLike,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
 import { AiComposeSuggestService } from './ai-compose-suggest.service';
 

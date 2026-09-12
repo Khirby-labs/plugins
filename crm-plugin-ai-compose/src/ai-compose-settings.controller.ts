@@ -6,7 +6,7 @@ import {
   RequirePermission,
   RequirePluginEnabled,
   PluginEnabledGuard,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
 import { AiComposeSuggestService } from './ai-compose-suggest.service';
 import { AI_COMPOSE_PLUGIN_NAME } from './ai-compose-settings.service';
