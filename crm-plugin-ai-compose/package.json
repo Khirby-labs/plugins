@@ -1,13 +1,13 @@
 {
   "name": "@khirby/plugin-ai-compose",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Khirby — AI-powered reply draft suggestions (BYOK, OpenAI-compatible)",
   "main": "src/index.ts",
   "keywords": [
     "khirby-plugin"
   ],
   "peerDependencies": {
-    "@khirby/plugin-host": "^1.2.0",
+    "@khirby/plugin-host": "^1.0.0",
     "@khirby/plugin-sdk": "^1.0.0",
     "@nestjs/common": "*",
     "@nestjs/core": "*",
