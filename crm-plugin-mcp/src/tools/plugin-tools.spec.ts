@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { registerPluginTools } from './plugin-tools';
-import type { InstancePluginsLike } from '../../../../packages/plugin-host/src';
+import type { InstancePluginsLike } from '@khirby/plugin-host';
 
 describe('registerPluginTools', () => {
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<unknown>>();

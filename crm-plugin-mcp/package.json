@@ -1,13 +1,13 @@
 {
   "name": "@khirby/plugin-mcp",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Khirby — MCP server for Cursor/Claude (create/update contacts, leads, boards; import; send mail; no delete)",
   "main": "src/index.ts",
   "keywords": [
     "khirby-plugin"
   ],
   "peerDependencies": {
-    "@khirby/plugin-host": "^1.0.0",
+    "@khirby/plugin-host": "^1.2.0",
     "@khirby/plugin-sdk": "^1.0.0",
     "@modelcontextprotocol/node": "*",
     "@modelcontextprotocol/server": "*",

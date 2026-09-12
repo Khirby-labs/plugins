@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { HttpException } from '@nestjs/common';
 import { z } from 'zod';
-import type { InstancePluginsLike } from '../../../../packages/plugin-host/src';
+import type { InstancePluginsLike } from '@khirby/plugin-host';
 
 function jsonResult(data: unknown) {
   return {

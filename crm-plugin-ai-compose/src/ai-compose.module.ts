@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { AI_COMPOSE_LLM } from '../../../packages/plugin-host/src';
+import { AI_COMPOSE_LLM } from '@khirby/plugin-host';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
 import { AiComposeSuggestService } from './ai-compose-suggest.service';
 import { AiComposeLlmService } from './ai-compose-llm.service';

@@ -2,10 +2,10 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
-import { Db } from '../../../packages/plugin-host/src';
-import { DB_TOKEN } from '../../../packages/plugin-host/src';
-import { PLUGIN_REGISTRY, type PluginRegistryLike } from '../../../packages/plugin-host/src';
-import { AppException } from '../../../packages/plugin-host/src';
+import { Db } from '@khirby/plugin-host';
+import { DB_TOKEN } from '@khirby/plugin-host';
+import { PLUGIN_REGISTRY, type PluginRegistryLike } from '@khirby/plugin-host';
+import { AppException } from '@khirby/plugin-host';
 import { mcpAccessTokens } from './schema';
 
 export const MCP_PLUGIN_NAME = 'crm_mcp';

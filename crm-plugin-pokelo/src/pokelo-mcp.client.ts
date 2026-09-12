@@ -1,4 +1,4 @@
-import type { KnowledgeMcpToolDef } from '../../../packages/plugin-host/src';
+import type { KnowledgeMcpToolDef } from '@khirby/plugin-host';
 
 export type McpToolResult = {
   result?: {

@@ -3,8 +3,8 @@ import {
   PLUGIN_REGISTRY,
   CONTACTS_SERVICE,
   type PluginRegistryLike,
-} from '../../../packages/plugin-host/src';
-import { AppException } from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
+import { AppException } from '@khirby/plugin-host';
 import { toAppException } from './listmonk-errors';
 import {
   parseConfig,

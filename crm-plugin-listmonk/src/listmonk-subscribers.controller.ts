@@ -1,9 +1,9 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { IsArray, IsString, ArrayMaxSize, ArrayMinSize } from 'class-validator';
-import { SessionGuard } from '../../../packages/plugin-host/src';
-import { PermissionGuard } from '../../../packages/plugin-host/src';
-import { RequirePermission } from '../../../packages/plugin-host/src';
+import { SessionGuard } from '@khirby/plugin-host';
+import { PermissionGuard } from '@khirby/plugin-host';
+import { RequirePermission } from '@khirby/plugin-host';
 import { ListmonkSubscribersService } from './listmonk-subscribers.service';
 
 class LookupSubscribersDto {

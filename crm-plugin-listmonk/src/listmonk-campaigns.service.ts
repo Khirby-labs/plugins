@@ -7,7 +7,7 @@ import {
   PLUGIN_REGISTRY,
   type PluginRegistryLike,
   AppException,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { toAppException } from './listmonk-errors';
 import { lmCampaigns } from './listmonk-campaigns.schema';
 import {

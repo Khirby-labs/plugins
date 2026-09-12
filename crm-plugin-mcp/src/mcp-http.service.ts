@@ -16,7 +16,7 @@ import {
   BOARD_STATUSES_SERVICE,
   type PluginRegistryLike,
   type InstancePluginsLike,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { MCP_PLUGIN_NAME, McpTokenService, parseBearerToken } from './mcp-token.service';
 import { registerCrmTools } from './tools/crm-tools';
 import { registerMailTools } from './tools/mail-tools';

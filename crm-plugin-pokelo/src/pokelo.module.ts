@@ -3,7 +3,7 @@ import {
   KNOWLEDGE_CONTEXT,
   KNOWLEDGE_TOOLS,
   POKELO_CONTEXT_SERVICE,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { PokeloSettingsService } from './pokelo-settings.service';
 import { PokeloContextService } from './pokelo-context.service';
 import { PokeloSettingsController } from './pokelo-settings.controller';

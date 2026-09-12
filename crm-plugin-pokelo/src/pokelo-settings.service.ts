@@ -6,7 +6,7 @@ import {
   PLUGIN_REGISTRY,
   type PluginRegistryLike,
   AppException,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { pokeloSettings } from './schema';
 import { encrypt, decrypt, isPokeloSecretsKeyConfigured } from './pokelo-crypto';
 

@@ -11,7 +11,7 @@ import {
   isReasoningEffort,
   parseModelReasoningSupport,
   resolveLoadedProvider,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { AiComposeSettingsService } from './ai-compose-settings.service';
 
 const CHAR_BUDGET = 14_000;

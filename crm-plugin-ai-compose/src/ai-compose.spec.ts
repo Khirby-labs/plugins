@@ -5,7 +5,7 @@ import {
   AiComposeSuggestService,
   stripCodeFences,
 } from './ai-compose-suggest.service';
-import { AppException } from '../../../packages/plugin-host/src';
+import { AppException } from '@khirby/plugin-host';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Crypto round-trip

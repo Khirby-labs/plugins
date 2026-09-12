@@ -8,7 +8,7 @@ import {
   AppException,
   isReasoningEffort,
   type ReasoningEffort,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { aiComposeSettings } from './schema';
 import { encrypt, decrypt, isAiComposeSecretsKeyConfigured } from './ai-compose-crypto';
 

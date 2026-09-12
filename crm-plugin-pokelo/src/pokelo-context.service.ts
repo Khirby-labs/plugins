@@ -4,7 +4,7 @@ import type {
   KnowledgeFetchOpts,
   KnowledgeMcpToolDef,
   KnowledgeToolsLike,
-} from '../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 import { PokeloSettingsService } from './pokelo-settings.service';
 import {
   callMcpTool,
