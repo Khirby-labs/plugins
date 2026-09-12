@@ -1,8 +1,8 @@
 import { Controller, Get, Post, Delete, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { SessionGuard } from '../../../packages/plugin-host/src';
-import { PermissionGuard } from '../../../packages/plugin-host/src';
-import { RequirePermission } from '../../../packages/plugin-host/src';
+import { SessionGuard } from '@khirby/plugin-host';
+import { PermissionGuard } from '@khirby/plugin-host';
+import { RequirePermission } from '@khirby/plugin-host';
 import { McpTokenService } from './mcp-token.service';
 
 @ApiTags('plugins-mcp')

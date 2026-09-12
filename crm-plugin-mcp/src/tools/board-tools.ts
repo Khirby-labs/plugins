@@ -6,7 +6,7 @@ import type {
   BoardProjectsServiceLike,
   BoardStatusesServiceLike,
   BoardTasksServiceLike,
-} from '../../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDENTIFIER_PREFIX_RE = /^([A-Za-z0-9]{1,10}-\d+)/i;

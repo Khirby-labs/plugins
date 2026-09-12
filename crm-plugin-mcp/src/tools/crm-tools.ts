@@ -5,7 +5,7 @@ import type {
   ContactsServiceLike,
   LeadsServiceLike,
   PipelineStagesServiceLike,
-} from '../../../../packages/plugin-host/src';
+} from '@khirby/plugin-host';
 
 const MAX_PAGE_SIZE = 50;
 
